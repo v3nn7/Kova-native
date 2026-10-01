@@ -14,3 +14,5 @@ bytemuck.workspace = true
 etagere.workspace = true
 log.workspace = true
 rustc-hash.workspace = true
+pollster.workspace = true
+kova-text.workspace = true

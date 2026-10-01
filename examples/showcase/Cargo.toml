@@ -6,3 +6,4 @@ publish = false
 
 [dependencies]
 kova.workspace = true
+image.workspace = true

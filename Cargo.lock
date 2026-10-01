@@ -1071,6 +1071,7 @@ version = "0.1.0"
 dependencies = [
  "log",
  "rustc-hash 2.1.3",
+ "slotmap",
  "smallvec",
 ]
 
@@ -1108,7 +1109,9 @@ dependencies = [
  "bytemuck",
  "etagere",
  "kova-core",
+ "kova-text",
  "log",
+ "pollster",
  "rustc-hash 2.1.3",
  "wgpu",
 ]
@@ -2207,6 +2210,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 name = "showcase"
 version = "0.1.0"
 dependencies = [
+ "image",
  "kova",
 ]
 
@@ -2867,12 +2871,16 @@ dependencies = [
  "cfg_aliases",
  "document-features",
  "hashbrown 0.17.1",
+ "js-sys",
  "log",
  "portable-atomic",
  "profiling",
  "raw-window-handle",
  "smallvec",
  "static_assertions",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
  "wgpu-core",
  "wgpu-hal",
  "wgpu-types",
@@ -2994,10 +3002,12 @@ checksum = "99dad6f1fbdbbdb4c278a6508b059d44688f5cebddf78d005a46a31340269286"
 dependencies = [
  "bitflags 2.13.2",
  "bytemuck",
+ "js-sys",
  "log",
  "naga-types",
  "raw-window-handle",
  "static_assertions",
+ "web-sys",
 ]
 
 [[package]]

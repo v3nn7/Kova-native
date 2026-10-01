@@ -21,7 +21,7 @@ kova-platform = { path = "crates/kova-platform" }
 kova-assets = { path = "crates/kova-assets" }
 kova-widgets = { path = "crates/kova-widgets" }
 
-wgpu = { version = "30", default-features = false, features = ["dx12", "vulkan", "metal", "wgsl"] }
+wgpu = { version = "30", default-features = false, features = ["std", "dx12", "vulkan", "metal", "wgsl"] }
 winit = "0.30.13"
 taffy = { version = "0.14", default-features = false, features = ["std", "taffy_tree", "flexbox", "grid", "block_layout", "content_size"] }
 cosmic-text = "0.19"
