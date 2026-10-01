@@ -73,6 +73,26 @@ Never commit a registry token. `publish = ["crates-io"]` restricts the libraries
 to crates.io, and the unpublished examples are skipped. Cargo publishes the
 selected library packages in dependency order.
 
+For a release that hits the new-package rate limit, or a partially completed
+upload, use the resumable PowerShell helper instead:
+
+```powershell
+.\scripts\publish-crates.ps1 -Plan
+.\scripts\publish-crates.ps1
+```
+
+The plan only reads Cargo metadata and registry versions. The publication helper
+discovers the dependency order, skips versions already present, uses `cargo
+publish -p` with verification, and waits until the retry time returned by a 429
+response. It stops on other failures or if the release checkout changes. The
+default total time limit is 65 minutes; `-MaxMinutes` can extend it. Commit changes
+before running it. Keep the checkout unchanged while it is publishing.
+
+Crates.io allows an initial burst of five new packages, then one additional new
+package every ten minutes. A fresh ten-package workspace release can therefore
+take about fifty minutes after the initial burst. See the
+[registry rate limits](https://crates.io/docs/rate-limits).
+
 For publishing one package at a time, use this valid dependency order:
 
 1. kova-native-core
