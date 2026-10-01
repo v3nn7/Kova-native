@@ -61,8 +61,15 @@ try {
                 throw 'Release checkout changed; review and commit changes before resuming'
             }
             Write-Output "Publishing $($package.name) $($package.version)"
-            $output = @(& cargo publish -p $package.name 2>&1)
-            $publishExit = $LASTEXITCODE
+            # Windows PowerShell 5.1 turns redirected native stderr into
+            # terminating errors under 'Stop'; cargo reports progress there.
+            $ErrorActionPreference = 'Continue'
+            try {
+                $output = @(& cargo publish -p $package.name 2>&1)
+                $publishExit = $LASTEXITCODE
+            } finally {
+                $ErrorActionPreference = 'Stop'
+            }
             $output | ForEach-Object { Write-Output $_.ToString() }
             if ($publishExit -eq 0) { break }
             $message = ($output | ForEach-Object { $_.ToString() }) -join "`n"
