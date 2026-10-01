@@ -1,0 +1,13 @@
+[package]
+name = "kova-core"
+description = "Foundation types for Kova: geometry, color, ids, reactive signals and invalidation."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rustc-hash.workspace = true
+smallvec.workspace = true
+log.workspace = true

@@ -1,0 +1,49 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "examples/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/v3nn7/kova"
+rust-version = "1.88"
+
+[workspace.dependencies]
+kova = { path = "crates/kova" }
+kova-core = { path = "crates/kova-core" }
+kova-render = { path = "crates/kova-render" }
+kova-layout = { path = "crates/kova-layout" }
+kova-text = { path = "crates/kova-text" }
+kova-input = { path = "crates/kova-input" }
+kova-animation = { path = "crates/kova-animation" }
+kova-platform = { path = "crates/kova-platform" }
+kova-assets = { path = "crates/kova-assets" }
+kova-widgets = { path = "crates/kova-widgets" }
+
+wgpu = { version = "30", default-features = false, features = ["dx12", "vulkan", "metal", "wgsl"] }
+winit = "0.30.13"
+taffy = { version = "0.14", default-features = false, features = ["std", "taffy_tree", "flexbox", "grid", "block_layout", "content_size"] }
+cosmic-text = "0.19"
+resvg = { version = "0.48", default-features = false }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+etagere = "0.2.15"
+bytemuck = { version = "1.25", features = ["derive"] }
+pollster = "0.4"
+arboard = { version = "3.6", default-features = false }
+slotmap = "1.1"
+smallvec = { version = "1.15", features = ["union", "const_generics"] }
+log = "0.4"
+env_logger = { version = "0.11", default-features = false, features = ["auto-color", "humantime"] }
+parking_lot = "0.12"
+rustc-hash = "2"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

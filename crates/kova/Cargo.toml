@@ -1,0 +1,22 @@
+[package]
+name = "kova"
+description = "Kova: a GPU-accelerated, Rust-first native GUI framework."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+kova-core.workspace = true
+kova-input.workspace = true
+kova-layout.workspace = true
+kova-text.workspace = true
+kova-animation.workspace = true
+kova-render.workspace = true
+kova-assets.workspace = true
+kova-platform.workspace = true
+kova-widgets.workspace = true
+pollster.workspace = true
+log.workspace = true
+env_logger.workspace = true

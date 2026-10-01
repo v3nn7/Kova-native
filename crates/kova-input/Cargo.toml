@@ -1,0 +1,12 @@
+[package]
+name = "kova-input"
+description = "Input event model, keystrokes, keymaps and propagation for Kova."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+kova-core.workspace = true
+smallvec.workspace = true
