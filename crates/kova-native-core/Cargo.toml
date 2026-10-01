@@ -1,0 +1,20 @@
+[package]
+name = "kova-native-core"
+description = "Foundation types for Kova Native: geometry, color, ids, reactive signals and invalidation."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+include.workspace = true
+publish.workspace = true
+documentation = "https://docs.rs/kova-native-core"
+
+[dependencies]
+rustc-hash.workspace = true
+smallvec.workspace = true
+log.workspace = true
+slotmap.workspace = true

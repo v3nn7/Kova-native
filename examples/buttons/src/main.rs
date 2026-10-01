@@ -1,10 +1,10 @@
-use kova::prelude::*;
+use kova_native::prelude::*;
 
 fn main() -> KovaResult<()> {
     let owner = Owner::new_root();
     let clicks = owner.with(|| signal(0));
     let app = Application::new()
-        .title("Kova / Buttons")
+        .title("Kova Native / Buttons")
         .size(760.0, 440.0);
     let app = if std::env::args().any(|a| a == "--smoke") {
         app.run_for(1.0.secs())

@@ -1,7 +1,9 @@
-use kova::prelude::*;
+use kova_native::prelude::*;
 
 fn main() -> KovaResult<()> {
-    let app = Application::new().title("Kova / Layout").size(780.0, 520.0);
+    let app = Application::new()
+        .title("Kova Native / Layout")
+        .size(780.0, 520.0);
     let app = if std::env::args().any(|a| a == "--smoke") {
         app.run_for(1.0.secs())
     } else {

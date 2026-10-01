@@ -9,10 +9,10 @@ milestone log; continuation points below are established from actual code.
 ## Workspace and API
 
 The workspace contains ten library crates and five executable examples.
-Rust 2024 / MSRV 1.88; wgpu 30, winit 0.30, Taffy 0.14, cosmic-text 0.19 and
+Rust 2024 / MSRV 1.89; wgpu 30, winit 0.30, Taffy 0.14, cosmic-text 0.19 and
 resvg 0.48 are pinned through Cargo.lock. Each subsystem exposes its own API.
 At audit start the `kova` facade contained only a module comment and all five
-examples contained `fn main() {}`. `kova-widgets/src/tests.rs` was empty.
+examples contained `fn main() {}`. `kova-native-widgets/src/tests.rs` was empty.
 There were no TODO/FIXME, `todo!` or `unimplemented!` markers in the source.
 Absence of markers did not imply that integration was complete.
 
@@ -20,17 +20,17 @@ Absence of markers did not imply that integration was complete.
 
 | Crate / subsystem | Implemented in supplied source | Limits / unfinished work |
 | --- | --- | --- |
-| kova-core | Logical geometry, affine transforms, colors/fills, stable ids, shared strings, time helpers, dirty flags; Signal, Memo, effects, observers, owners, batching and cleanup | Single UI thread; panic recovery of effect flushing needs additional review |
-| kova-render | GPU/device/surface management; ordered flat Scene built by the retained tree; one instanced pipeline; quads, independent radii, borders, two-stop Oklab gradients, outer/inset shadows, monochrome/color sprites, opacity, affine transforms, clipping and backdrop blur | Scene is repainted on scheduled frames; no retained per-node command cache, arbitrary masks, general foreground blur or custom shader registration |
+| kova-native-core | Logical geometry, affine transforms, colors/fills, stable ids, shared strings, time helpers, dirty flags; Signal, Memo, effects, observers, owners, batching and cleanup | Single UI thread; panic recovery of effect flushing needs additional review |
+| kova-native-render | GPU/device/surface management; ordered flat Scene built by the retained tree; one instanced pipeline; quads, independent radii, borders, two-stop Oklab gradients, outer/inset shadows, monochrome/color sprites, opacity, affine transforms, clipping and backdrop blur | Scene is repainted on scheduled frames; no retained per-node command cache, arbitrary masks, general foreground blur or custom shader registration |
 | Atlas | Glyph/image/vector caches, negative cache, growable texture arrays, uploads and explicit remove | No automatic eviction/budget; assets larger than 2046 px in either dimension cannot fit a tile; texture array growth lacks an application budget |
-| kova-layout | Incremental Taffy wrapper, row/column/flex/wrapping, block, stack via shared grid cell, constraints, margins/padding/gaps, alignment, absolute positioning, overflow and Grid | Grid already exists; scrolling and overlay scrollbars are implemented in ElementTree; no virtualization or draggable scrollbar thumbs |
-| kova-text | System fonts/loading, fallback, advanced Unicode shaping/BiDi, glyph rasterization, width measurement cache, wrapping, alignment, hit testing, caret and selection rectangles | Caret geometry interpolates clusters by byte distance and needs grapheme/BiDi/ligature review before an editor; selection geometry is not an editable widget |
-| kova-input | Mouse/key/IME event vocabulary, modifiers, click counting, actions, key bindings and chords | Chord timeout/replay is absent; platform translation and tree dispatch are separate layers |
-| kova-platform | Native windows, event loop, logical input conversion, scale changes, IME area/enable hooks, cursor, clipboard, waker and timer deadline | Window creation is synchronous; no accessibility bridge; cross-platform/device behavior needs live validation |
-| kova-widgets tree | Retained nodes, dirty queues, per-node bindings, reactive regions/views/lists, style inheritance, incremental layout, hit testing, capture/bubble, focus/Tab, hover/press/click/double-click, drag, wheel scrolling, window commands; transform-aware local event coordinates | No keyed reconciliation/virtual lists; hit clips under rotation and nested rounded masks are approximate |
-| kova-widgets elements | Div/row/column/stack/spacer, Text, image object-fit, SVG/icon, custom Canvas; theme tokens | No actual text-input/editor widget; accepts_text_input and IME are extension hooks only; images use their base corner radii rather than resolved animated radii |
+| kova-native-layout | Incremental Taffy wrapper, row/column/flex/wrapping, block, stack via shared grid cell, constraints, margins/padding/gaps, alignment, absolute positioning, overflow and Grid | Grid already exists; scrolling and overlay scrollbars are implemented in ElementTree; no virtualization or draggable scrollbar thumbs |
+| kova-native-text | System fonts/loading, fallback, advanced Unicode shaping/BiDi, glyph rasterization, width measurement cache, wrapping, alignment, hit testing, caret and selection rectangles | Caret geometry interpolates clusters by byte distance and needs grapheme/BiDi/ligature review before an editor; selection geometry is not an editable widget |
+| kova-native-input | Mouse/key/IME event vocabulary, modifiers, click counting, actions, key bindings and chords | Chord timeout/replay is absent; platform translation and tree dispatch are separate layers |
+| kova-native-platform | Native windows, event loop, logical input conversion, scale changes, IME area/enable hooks, cursor, clipboard, waker and timer deadline | Window creation is synchronous; no accessibility bridge; cross-platform/device behavior needs live validation |
+| kova-native-widgets tree | Retained nodes, dirty queues, per-node bindings, reactive regions/views/lists, style inheritance, incremental layout, hit testing, capture/bubble, focus/Tab, hover/press/click/double-click, drag, wheel scrolling, window commands; transform-aware local event coordinates | No keyed reconciliation/virtual lists; hit clips under rotation and nested rounded masks are approximate |
+| kova-native-widgets elements | Div/row/column/stack/spacer, Text, image object-fit, SVG/icon, custom Canvas; theme tokens | No actual text-input/editor widget; accepts_text_input and IME are extension hooks only; images use their base corner radii rather than resolved animated radii |
 | Built-in widgets | Button variants, card, badge, divider, heading/label, switch, checkbox, transform-aware slider, progress, spinner and segmented control | No menus/tooltips/dialogs |
-| kova-animation | Easing/cubic bezier/steps, Lerp, analytical springs, tweens, retargeting, delays, repeats and ping-pong | Visual transitions cover fill, border color, radii, shadows, opacity and transforms; layout size/position changes are immediate unless explicitly animated through bindings; spring retarget velocity direction needs further review |
+| kova-native-animation | Easing/cubic bezier/steps, Lerp, analytical springs, tweens, retargeting, delays, repeats and ping-pong | Visual transitions cover fill, border color, radii, shadows, opacity and transforms; layout size/position changes are immediate unless explicitly animated through bindings; spring retarget velocity direction needs further review |
 
 ## Verification at audit start
 

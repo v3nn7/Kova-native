@@ -1,0 +1,27 @@
+[package]
+name = "kova-native-widgets"
+description = "Element tree, styling, event dispatch and built-in widgets for Kova Native."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+include.workspace = true
+publish.workspace = true
+documentation = "https://docs.rs/kova-native-widgets"
+
+[dependencies]
+kova-native-core.workspace = true
+kova-native-input.workspace = true
+kova-native-layout.workspace = true
+kova-native-text.workspace = true
+kova-native-animation.workspace = true
+kova-native-render.workspace = true
+kova-native-assets.workspace = true
+slotmap.workspace = true
+smallvec.workspace = true
+rustc-hash.workspace = true
+log.workspace = true

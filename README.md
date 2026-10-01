@@ -1,8 +1,23 @@
-# Kova
+# Kova Native
 
-A native, GPU accelerated GUI framework for Rust. Kova combines retained elements,
+A native, GPU accelerated GUI framework for Rust. Kova Native combines retained elements,
 fine grained reactive state, incremental Taffy layout, cosmic-text shaping and an
 instanced wgpu renderer. No HTML, CSS runtime, JavaScript or WebView is involved.
+
+## Crates.io packages
+
+The package and Rust API use the new name throughout:
+
+```toml
+[dependencies]
+kova-native = "0.1.0"
+```
+
+Import the framework with `use kova_native::prelude::*`. Subsystem packages use
+the `kova-native-*` prefix and Rust imports such as `kova_native_core` and
+`kova_native_render`.
+Kova Native requires Rust 1.89 or newer. See [the publishing guide](https://github.com/v3nn7/Kova/blob/main/docs/PUBLISHING.md)
+for package verification and release commands.
 
 ```powershell
 cargo run -p showcase
@@ -22,13 +37,13 @@ cargo run -p showcase -- --page typography --light
 ## A small application
 
 ```rust,no_run
-use kova::prelude::*;
+use kova_native::prelude::*;
 
 fn main() -> KovaResult<()> {
     let owner = Owner::new_root();
     let count = owner.with(|| signal(0));
     let result = Application::new()
-        .title("My Kova app")
+        .title("My Kova Native app")
         .size(640.0, 420.0)
         .run(move || {
             column().center().gap(16.0)
@@ -49,8 +64,8 @@ outside that builder; region-owned state is disposed when its region is rebuilt.
 `WindowOptions` exposes the existing native window attributes and renderer
 surface settings, including minimum size, vsync and maximum frame latency.
 `Application::key_bindings` uses the existing action/keymap system; handle actions
-with `.on_action` on an element on the focus path. `kova::prelude` contains common
-builders; `kova::{core, input, layout, text, animation, assets, widgets, platform,
+with `.on_action` on an element on the focus path. `kova_native::prelude` contains common
+builders; `kova_native::{core, input, layout, text, animation, assets, widgets, platform,
 render}` re-export their respective crates.
 
 ## Validation and examples
@@ -88,6 +103,14 @@ The renderer respects `WGPU_BACKEND` (for example `$env:WGPU_BACKEND='dx12'`
 or `'vulkan'` in PowerShell). Leave it unset for automatic native backend
 selection. The native smoke script saves stdout/stderr in `target/native-smoke`.
 
-See [the repository audit](docs/AUDIT.md) for subsystem coverage and remaining
+See [the repository audit](https://github.com/v3nn7/Kova/blob/main/docs/AUDIT.md) for subsystem coverage and remaining
 work. The public API is experimental; editable text, accessibility, arbitrary
 masks and custom shader registration are not implemented yet.
+
+## License
+
+Kova Native is licensed under the [Mozilla Public License 2.0](LICENSE).
+
+This Source Code Form is subject to the terms of the Mozilla Public License,
+v. 2.0. If a copy of the MPL was not distributed with this file, You can obtain
+one at https://mozilla.org/MPL/2.0/.

@@ -1,11 +1,13 @@
 use super::*;
-use kova::input::{
+use kova_native::input::{
     InputEvent, KeyDownEvent, MouseButton, MouseDownEvent, MouseUpEvent, ScrollDelta,
     ScrollWheelEvent,
 };
-use kova::render::{Atlas, Scene};
-use kova::text::TextSystem;
-use kova::widgets::{DispatchContext, ElementTree, FrameContext, FrameOutput, MemoryClipboard};
+use kova_native::render::{Atlas, Scene};
+use kova_native::text::TextSystem;
+use kova_native::widgets::{
+    DispatchContext, ElementTree, FrameContext, FrameOutput, MemoryClipboard,
+};
 
 struct Harness {
     tree: ElementTree,
@@ -13,7 +15,7 @@ struct Harness {
     atlas: Atlas,
     scene: Scene,
     clipboard: MemoryClipboard,
-    keymap: kova::input::Keymap,
+    keymap: kova_native::input::Keymap,
     now: Instant,
 }
 
@@ -31,7 +33,7 @@ impl Harness {
             atlas: Atlas::new(),
             scene: Scene::new(),
             clipboard: MemoryClipboard::default(),
-            keymap: kova::input::Keymap::new(),
+            keymap: kova_native::input::Keymap::new(),
             now: Instant::now(),
         }
     }

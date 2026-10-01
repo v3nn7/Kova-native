@@ -5,21 +5,26 @@ members = ["crates/*", "examples/*"]
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/v3nn7/kova"
-rust-version = "1.88"
+license = "MPL-2.0"
+repository = "https://github.com/v3nn7/Kova"
+readme = "README.md"
+keywords = ["gui", "gpu", "ui", "desktop", "reactive"]
+categories = ["gui", "graphics", "rendering"]
+include = ["src/**", "Cargo.toml", "LICENSE"]
+publish = ["crates-io"]
+rust-version = "1.89"
 
 [workspace.dependencies]
-kova = { path = "crates/kova" }
-kova-core = { path = "crates/kova-core" }
-kova-render = { path = "crates/kova-render" }
-kova-layout = { path = "crates/kova-layout" }
-kova-text = { path = "crates/kova-text" }
-kova-input = { path = "crates/kova-input" }
-kova-animation = { path = "crates/kova-animation" }
-kova-platform = { path = "crates/kova-platform" }
-kova-assets = { path = "crates/kova-assets" }
-kova-widgets = { path = "crates/kova-widgets" }
+kova-native = { version = "0.1.0", path = "crates/kova-native" }
+kova-native-core = { version = "0.1.0", path = "crates/kova-native-core" }
+kova-native-render = { version = "0.1.0", path = "crates/kova-native-render" }
+kova-native-layout = { version = "0.1.0", path = "crates/kova-native-layout" }
+kova-native-text = { version = "0.1.0", path = "crates/kova-native-text" }
+kova-native-input = { version = "0.1.0", path = "crates/kova-native-input" }
+kova-native-animation = { version = "0.1.0", path = "crates/kova-native-animation" }
+kova-native-platform = { version = "0.1.0", path = "crates/kova-native-platform" }
+kova-native-assets = { version = "0.1.0", path = "crates/kova-native-assets" }
+kova-native-widgets = { version = "0.1.0", path = "crates/kova-native-widgets" }
 
 wgpu = { version = "30", default-features = false, features = ["std", "dx12", "vulkan", "metal", "wgsl"] }
 winit = "0.30.13"

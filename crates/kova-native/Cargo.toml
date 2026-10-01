@@ -1,0 +1,28 @@
+[package]
+name = "kova-native"
+description = "Kova Native: a GPU-accelerated, Rust-first native GUI framework."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+include.workspace = true
+publish.workspace = true
+documentation = "https://docs.rs/kova-native"
+
+[dependencies]
+kova-native-core.workspace = true
+kova-native-input.workspace = true
+kova-native-layout.workspace = true
+kova-native-text.workspace = true
+kova-native-animation.workspace = true
+kova-native-render.workspace = true
+kova-native-assets.workspace = true
+kova-native-platform.workspace = true
+kova-native-widgets.workspace = true
+pollster.workspace = true
+log.workspace = true
+env_logger.workspace = true

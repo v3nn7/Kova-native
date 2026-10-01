@@ -1,4 +1,4 @@
-use kova::prelude::*;
+use kova_native::prelude::*;
 
 #[derive(Clone, Copy)]
 struct Showcase {
@@ -57,7 +57,12 @@ fn navigation(state: Showcase) -> Div {
                         .bg(t.accent)
                         .child(icon(LOGO).size(18.0).color(Color::WHITE)),
                 )
-                .child(text("kova").size(24.0).semibold().letter_spacing(-0.7)),
+                .child(
+                    text("kova-native")
+                        .size(19.0)
+                        .semibold()
+                        .letter_spacing(-0.7),
+                ),
         )
         .child(
             column().gap(10.0).child(eyebrow("PLAYGROUND")).children(
@@ -121,7 +126,7 @@ fn navigation(state: Showcase) -> Div {
             column()
                 .gap(4.0)
                 .child(text("Rust. Native. GPU.").size(12.0).medium())
-                .child(label("Kova / 0.1.0").size(11.0)),
+                .child(label("Kova Native / 0.1.0").size(11.0)),
         )
 }
 
@@ -423,7 +428,7 @@ fn showcase(state: Showcase) -> Div {
                             .w_full(),
                         )
                         .child(
-                            label("Rendered with wgpu. Built entirely with Kova elements.")
+                            label("Rendered with wgpu. Built entirely with Kova Native elements.")
                                 .size(11.0),
                         ),
                 ),
@@ -469,7 +474,7 @@ fn main() -> KovaResult<()> {
         options.attributes.min_size = Some(Size::new(850.0, 600.0));
         let app = Application::new()
             .window(options)
-            .title("Kova / Showcase")
+            .title("Kova Native / Showcase")
             .size(1120.0, 820.0);
         let app = if smoke { app.run_for(2.0.secs()) } else { app };
         app.run(move || showcase(state)).and_then(|report| {
@@ -490,11 +495,11 @@ fn capture(state: Showcase, path: &str, scale: f32) -> KovaResult<()> {
             "capture scale must be between 0.5 and 3".into(),
         ));
     }
-    use kova::render::{GpuContext, Renderer, Scene};
-    use kova::widgets::{ElementTree, FrameContext};
+    use kova_native::render::{GpuContext, Renderer, Scene};
+    use kova_native::widgets::{ElementTree, FrameContext};
     let gpu = GpuContext::new_headless()?;
     let mut renderer = Renderer::new(&gpu);
-    let mut ts = kova::text::TextSystem::new();
+    let mut ts = kova_native::text::TextSystem::new();
     let mut scene = Scene::new();
     let t = theme();
     let mut tree = ElementTree::new(

@@ -2,7 +2,9 @@
 name = "hello_window"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
 publish = false
 
 [dependencies]
-kova.workspace = true
+kova-native.workspace = true

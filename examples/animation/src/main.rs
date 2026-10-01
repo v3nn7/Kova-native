@@ -1,10 +1,10 @@
-use kova::prelude::*;
+use kova_native::prelude::*;
 
 fn main() -> KovaResult<()> {
     let owner = Owner::new_root();
     let moved = owner.with(|| signal(false));
     let app = Application::new()
-        .title("Kova / Animation")
+        .title("Kova Native / Animation")
         .size(700.0, 450.0);
     let app = if std::env::args().any(|a| a == "--smoke") {
         app.run_for(1.0.secs())
