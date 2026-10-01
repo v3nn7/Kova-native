@@ -31,6 +31,7 @@ navigate and activate controls. The Motion and Typography pages use the same
 retained element tree as the overview.
 
 ```powershell
+cargo run -p showcase -- --page components
 cargo run -p showcase -- --page motion
 cargo run -p showcase -- --page typography --light
 ```

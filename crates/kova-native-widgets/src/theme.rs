@@ -98,6 +98,38 @@ impl Theme {
     }
 }
 
+impl Theme {
+    /// Returns a copy of this theme using `accent` as its accent color.
+    /// Hover, pressed and soft variants are derived from it.
+    ///
+    /// ```ignore
+    /// set_theme(Theme::dark().with_accent(rgb(0x14b8a6)));
+    /// ```
+    pub fn with_accent(mut self, accent: impl Into<Color>) -> Theme {
+        let accent = accent.into();
+        self.accent = accent;
+        self.accent_hover = accent.lighten(0.06);
+        self.accent_active = accent.darken(0.06);
+        self.accent_soft = accent.with_alpha(if self.dark { 0.18 } else { 0.14 });
+        self.accent_text = if accent.luminance() > 0.4 {
+            rgb(0x111318)
+        } else {
+            rgb(0xffffff)
+        };
+        self
+    }
+
+    /// Named accent colors that pair well with both built-in themes.
+    pub const ACCENTS: [(&'static str, u32); 6] = [
+        ("Violet", 0x7c5cff),
+        ("Blue", 0x3b82f6),
+        ("Teal", 0x14b8a6),
+        ("Emerald", 0x22c55e),
+        ("Amber", 0xf59e0b),
+        ("Rose", 0xf43f5e),
+    ];
+}
+
 impl Default for Theme {
     fn default() -> Self {
         Theme::dark()
