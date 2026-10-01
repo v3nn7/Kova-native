@@ -15,7 +15,7 @@ publish = ["crates-io"]
 rust-version = "1.89"
 
 [workspace.dependencies]
-kova-native = { version = "0.1.0", path = "crates/kova-native" }
+kova-native = { version = "0.1.1", path = "crates/kova-native" }
 kova-native-core = { version = "0.1.0", path = "crates/kova-native-core" }
 kova-native-render = { version = "0.1.0", path = "crates/kova-native-render" }
 kova-native-layout = { version = "0.1.0", path = "crates/kova-native-layout" }

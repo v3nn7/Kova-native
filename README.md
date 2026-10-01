@@ -10,12 +10,13 @@ The package and Rust API use the new name throughout:
 
 ```toml
 [dependencies]
-kova-native = "0.1.0"
+kova-native = "0.1.1"
 ```
 
 Import the framework with `use kova_native::prelude::*`. Subsystem packages use
 the `kova-native-*` prefix and Rust imports such as `kova_native_core` and
 `kova_native_render`.
+Read the [API documentation and quick start](https://docs.rs/kova-native/latest/kova_native/).
 Kova Native requires Rust 1.89 or newer. See [the publishing guide](https://github.com/v3nn7/Kova-native/blob/main/docs/PUBLISHING.md)
 for package verification and release commands.
 

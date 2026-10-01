@@ -17,9 +17,13 @@ use std::rc::Rc;
 /// Native window and presentation settings, using the platform/renderer options.
 #[derive(Clone, Debug)]
 pub struct WindowOptions {
+    /// Native title, logical dimensions, minimum size and window attributes.
     pub attributes: WindowAttributes,
+    /// Swapchain presentation settings, including vsync and frame latency.
     pub surface: SurfaceOptions,
+    /// Color used to clear the window before drawing the scene.
     pub background: Color,
+    /// Inherited text defaults for the root element tree.
     pub text_style: TextStyle,
 }
 
@@ -42,8 +46,11 @@ impl Default for WindowOptions {
 /// Measurements from frames actually presented to the native surface.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct RunReport {
+    /// Frames successfully presented to the native swapchain.
     pub presented_frames: u64,
+    /// Element-tree work performed for the last presented frame.
     pub last_frame: FrameStats,
+    /// Primitive, culling and draw-call counts for the last presented scene.
     pub last_scene: SceneStats,
 }
 
@@ -57,15 +64,18 @@ pub struct Application {
 }
 
 impl Application {
+    /// Creates an application using the current theme and default window options.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Replaces the native window, presentation and root text settings.
     pub fn window(mut self, options: WindowOptions) -> Self {
         self.options = options;
         self
     }
 
+    /// Sets the native window's title.
     pub fn title(mut self, title: impl Into<String>) -> Self {
         self.options.attributes.title = title.into();
         self
@@ -77,6 +87,9 @@ impl Application {
         self
     }
 
+    /// Appends shortcuts to the action keymap used by the focused element path.
+    ///
+    /// Register action handlers with [`kova_native_widgets::Interactive::on_action`].
     pub fn key_bindings(mut self, bindings: impl IntoIterator<Item = KeyBinding>) -> Self {
         self.bindings.extend(bindings);
         self
@@ -94,6 +107,10 @@ impl Application {
     /// Signals read directly by `build` rebuild its region. Read frequently
     /// changing state in `text`/`bind` closures to update individual nodes.
     /// State that must survive root rebuilds should be owned outside `build`.
+    ///
+    /// Call this on the main thread with an active native windowing session.
+    /// The returned [`RunReport`] describes frames actually presented. Platform,
+    /// GPU initialization and rendering failures are returned as [`KovaError`].
     pub fn run<E: IntoElement>(
         self,
         mut build: impl FnMut() -> E + 'static,
