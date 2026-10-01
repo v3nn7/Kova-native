@@ -8,6 +8,13 @@ struct Showcase {
     amount: Signal<f32>,
     section: Signal<usize>,
     moved: Signal<bool>,
+    accent: Signal<Option<u32>>,
+    plan: Signal<usize>,
+    tab: Signal<usize>,
+    filters: [Signal<bool>; 4],
+    seats: Signal<i32>,
+    stars: Signal<u8>,
+    faq: [Signal<bool>; 2],
 }
 
 impl Showcase {
@@ -19,6 +26,13 @@ impl Showcase {
             amount: signal(0.65),
             section: signal(0),
             moved: signal(false),
+            accent: signal(None),
+            plan: signal(1),
+            tab: signal(0),
+            filters: [signal(true), signal(false), signal(true), signal(false)],
+            seats: signal(3),
+            stars: signal(4),
+            faq: [signal(true), signal(false)],
         }
     }
 }
@@ -66,7 +80,7 @@ fn navigation(state: Showcase) -> Div {
         )
         .child(
             column().gap(10.0).child(eyebrow("PLAYGROUND")).children(
-                ["Overview", "Motion", "Typography"]
+                ["Overview", "Components", "Motion", "Typography"]
                     .into_iter()
                     .enumerate()
                     .map(move |(i, name)| {
@@ -113,10 +127,14 @@ fn navigation(state: Showcase) -> Div {
                 .small()
                 .id("theme")
                 .on_click(move |_| {
-                    set_theme(if theme().dark {
+                    let base = if theme().dark {
                         Theme::light()
                     } else {
                         Theme::dark()
+                    };
+                    set_theme(match state.accent.get() {
+                        Some(hex) => base.with_accent(rgb(hex)),
+                        None => base,
                     })
                 }),
             ),
@@ -254,6 +272,207 @@ fn overview(state: Showcase) -> Div {
                     }).hover(|s| s.scale(1.08).rotate(-4.0)).transition(Spring::snappy()))
                 .child(label(title).size(11.0))
         })))
+}
+
+fn accent_picker(state: Showcase) -> Div {
+    let t = theme();
+    let ring = t.text;
+    row().gap(10.0).children(
+        Theme::ACCENTS
+            .into_iter()
+            .enumerate()
+            .map(move |(i, (name, hex))| {
+                let color = rgb(hex);
+                tooltip(
+                    div()
+                        .id(("accent", i))
+                        .size(28.0)
+                        .rounded_full()
+                        .bg(color)
+                        .border(2.0)
+                        .cursor_pointer()
+                        .focusable()
+                        .bind(move |s| {
+                            if state.accent.get().unwrap_or(Theme::ACCENTS[0].1) == hex {
+                                s.border_color(ring).scale(1.1)
+                            } else {
+                                s.border_color(Color::TRANSPARENT)
+                            }
+                        })
+                        .hover(|s| s.scale(1.12))
+                        .transition(Spring::snappy())
+                        .on_click(move |_| {
+                            state.accent.set(Some(hex));
+                            let base = if theme().dark {
+                                Theme::dark()
+                            } else {
+                                Theme::light()
+                            };
+                            set_theme(base.with_accent(color));
+                        }),
+                    name,
+                )
+            }),
+    )
+}
+
+fn components(state: Showcase) -> Div {
+    let t = theme();
+    column()
+        .gap(20.0)
+        .w_full()
+        .child(heading("Components, ready to use."))
+        .child(label(
+            "Every widget below follows the theme and the accent you pick.",
+        ))
+        .child(
+            card().gap(14.0).child(eyebrow("ACCENT COLOR")).child(
+                row().justify_between().child(accent_picker(state)).child(
+                    row()
+                        .gap(6.0)
+                        .child(kbd("Tab"))
+                        .child(label("then"))
+                        .child(kbd("Enter")),
+                ),
+            ),
+        )
+        .child(
+            div()
+                .grid_cols(2)
+                .gap(16.0)
+                .child(
+                    card()
+                        .gap(14.0)
+                        .child(eyebrow("01 / CHOICES"))
+                        .child(text("Pick a plan").size(18.0).semibold())
+                        .child(radio_group(&["Hobby", "Pro", "Team"], state.plan).id("plan"))
+                        .child(divider())
+                        .child(
+                            row()
+                                .justify_between()
+                                .child(label("Seats"))
+                                .child(stepper(state.seats, 1, 20).id("seats")),
+                        )
+                        .child(
+                            row()
+                                .justify_between()
+                                .child(label("Your rating"))
+                                .child(rating(state.stars, 5)),
+                        ),
+                )
+                .child(
+                    card()
+                        .gap(14.0)
+                        .child(eyebrow("02 / FILTERS"))
+                        .child(tabs(&["All", "Design", "Engineering"], state.tab).id("tabs"))
+                        .child(
+                            row().gap(8.0).flex_wrap().children(
+                                ["Rust", "GPU", "Layout", "Text"]
+                                    .into_iter()
+                                    .zip(state.filters)
+                                    .map(|(name, sel)| chip(name, sel)),
+                            ),
+                        )
+                        .child(dynamic(move || {
+                            let names = [
+                                "Every project",
+                                "Mockups and motion studies",
+                                "Renderer and layout work",
+                            ];
+                            label(names[state.tab.get().min(2)]).size(12.0)
+                        }))
+                        .child(
+                            row()
+                                .gap(10.0)
+                                .items_center()
+                                .child(
+                                    row().children(
+                                        ["Ada Lovelace", "Linus T", "Grace H"]
+                                            .into_iter()
+                                            .enumerate()
+                                            .map(|(i, n)| {
+                                                avatar(
+                                                    &n.split_whitespace()
+                                                        .filter_map(|w| w.chars().next())
+                                                        .collect::<String>(),
+                                                )
+                                                .when(i > 0, |a| a.ml(-10.0))
+                                            }),
+                                    ),
+                                )
+                                .child(label("3 people are editing").size(12.0)),
+                        ),
+                ),
+        )
+        .child(
+            column()
+                .gap(10.0)
+                .child(alert(
+                    AlertKind::Info,
+                    "Heads up",
+                    "Kova Native widgets are drawn by your GPU, with no web view.",
+                ))
+                .child(alert(
+                    AlertKind::Success,
+                    "Saved",
+                    "Your settings were stored.",
+                ))
+                .child(alert(
+                    AlertKind::Warning,
+                    "Almost full",
+                    "The glyph atlas is at 90% of its budget.",
+                ))
+                .child(alert(
+                    AlertKind::Danger,
+                    "Build failed",
+                    "Shader compilation reported one error.",
+                )),
+        )
+        .child(
+            div()
+                .grid_cols(2)
+                .gap(16.0)
+                .child(
+                    card()
+                        .gap(10.0)
+                        .child(eyebrow("03 / DETAILS"))
+                        .child(accordion("What is Kova Native?", state.faq[0], || {
+                            text("A native, GPU accelerated GUI framework for Rust.")
+                        }))
+                        .child(accordion("Does it need a browser?", state.faq[1], || {
+                            text("No. There is no HTML, CSS runtime, JavaScript or WebView.")
+                        })),
+                )
+                .child(
+                    card()
+                        .gap(12.0)
+                        .child(eyebrow("04 / LOADING"))
+                        .child(
+                            row()
+                                .gap(12.0)
+                                .child(
+                                    div()
+                                        .size(40.0)
+                                        .rounded_full()
+                                        .bg(t.surface_raised.mix(t.border, 0.6)),
+                                )
+                                .child(
+                                    column()
+                                        .flex_1()
+                                        .gap(8.0)
+                                        .child(skeleton().w(pct(60.0)))
+                                        .child(skeleton()),
+                                ),
+                        )
+                        .child(skeleton().h(56.0))
+                        .child(
+                            row()
+                                .gap(10.0)
+                                .child(spinner())
+                                .child(label("Fetching data").size(12.0)),
+                        ),
+                ),
+        )
 }
 
 fn motion(state: Showcase) -> Div {
@@ -421,8 +640,9 @@ fn showcase(state: Showcase) -> Div {
                         .gap(22.0)
                         .child(
                             dynamic(move || match state.section.get() {
-                                1 => motion(state),
-                                2 => typography(),
+                                1 => components(state),
+                                2 => motion(state),
+                                3 => typography(),
                                 _ => overview(state),
                             })
                             .w_full(),
@@ -440,11 +660,12 @@ fn main() -> KovaResult<()> {
     let section = match args.iter().position(|a| a == "--page") {
         Some(i) => match args.get(i + 1).map(String::as_str) {
             Some("overview") => 0,
-            Some("motion") => 1,
-            Some("typography") => 2,
+            Some("components") => 1,
+            Some("motion") => 2,
+            Some("typography") => 3,
             _ => {
                 return Err(KovaError::Other(
-                    "--page requires overview, motion or typography".into(),
+                    "--page requires overview, components, motion or typography".into(),
                 ));
             }
         },

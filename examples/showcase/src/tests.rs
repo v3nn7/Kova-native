@@ -164,6 +164,21 @@ fn showcase_reactivity_focus_scroll_theme_and_widgets_integrate() {
     );
     h.click(("nav", 1usize));
     assert_eq!(state.section.get(), 1);
+    h.frame();
+    assert!(h.tree.node_by_id(&"plan".into()).is_some());
+    h.click(("accent", 2usize));
+    assert_eq!(state.accent.get(), Some(Theme::ACCENTS[2].1));
+    assert_eq!(theme().accent, rgb(Theme::ACCENTS[2].1));
+    h.frame();
+    h.click("theme");
+    assert_eq!(
+        theme().accent,
+        rgb(Theme::ACCENTS[2].1),
+        "accent survives a light/dark switch"
+    );
+    h.frame();
+    h.click(("nav", 2usize));
+    assert_eq!(state.section.get(), 2);
     assert!(h.tree.node_by_id(&"spring-box".into()).is_some());
     h.click("retarget");
     assert!(state.moved.get());
@@ -187,7 +202,7 @@ fn showcase_reactivity_focus_scroll_theme_and_widgets_integrate() {
     }));
     assert!((state.amount.get() - 0.25).abs() < 0.001);
     h.frame();
-    h.click(("nav", 2usize));
+    h.click(("nav", 3usize));
     assert!(h.tree.node_by_id(&"spring-box".into()).is_none());
     assert!(
         !h.frame().animating,
