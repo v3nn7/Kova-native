@@ -37,8 +37,8 @@ developing the workspace, and Cargo's normalized registry manifests retain the
 version requirement instead. Change the shared package version and the internal
 dependency versions together for the next release.
 
-Each library inherits its description-independent metadata, README, license,
-keywords, categories, repository, MSRV, registry restriction and inclusion list.
+Libraries share their README, license, keywords, categories, repository, MSRV,
+registry restriction and inclusion list through workspace metadata.
 Each has its own docs.rs URL and a copy of the root MPL-2.0 `LICENSE`. Keep those
 license copies identical to the root file. Archives include source files,
 including WGSL shaders, README and LICENSE; examples remain `publish = false`.
