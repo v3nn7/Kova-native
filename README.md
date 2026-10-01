@@ -16,7 +16,7 @@ kova-native = "0.1.0"
 Import the framework with `use kova_native::prelude::*`. Subsystem packages use
 the `kova-native-*` prefix and Rust imports such as `kova_native_core` and
 `kova_native_render`.
-Kova Native requires Rust 1.89 or newer. See [the publishing guide](https://github.com/v3nn7/Kova/blob/main/docs/PUBLISHING.md)
+Kova Native requires Rust 1.89 or newer. See [the publishing guide](https://github.com/v3nn7/Kova-native/blob/main/docs/PUBLISHING.md)
 for package verification and release commands.
 
 ```powershell
@@ -103,7 +103,7 @@ The renderer respects `WGPU_BACKEND` (for example `$env:WGPU_BACKEND='dx12'`
 or `'vulkan'` in PowerShell). Leave it unset for automatic native backend
 selection. The native smoke script saves stdout/stderr in `target/native-smoke`.
 
-See [the repository audit](https://github.com/v3nn7/Kova/blob/main/docs/AUDIT.md) for subsystem coverage and remaining
+See [the repository audit](https://github.com/v3nn7/Kova-native/blob/main/docs/AUDIT.md) for subsystem coverage and remaining
 work. The public API is experimental; editable text, accessibility, arbitrary
 masks and custom shader registration are not implemented yet.
 
