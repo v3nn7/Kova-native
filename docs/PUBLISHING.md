@@ -1,7 +1,6 @@
 # Publishing Kova Native
 
-The workspace contains ten publishable library packages. The facade
-`kova-native` is at 0.1.1; the nine subsystem libraries remain at 0.1.0. All
+The workspace contains ten publishable library packages, all at 0.2.0. All
 use the SPDX identifier `MPL-2.0`, Rust 2024 and a declared minimum Rust version
 of 1.89. `cosmic-text` 0.19 requires Rust 1.89. The publishing workflow below
 uses the workspace packaging/publishing support of Cargo 1.98.1.
@@ -26,7 +25,7 @@ There are no legacy dependency aliases or library-name overrides. Consumers use:
 
 ```toml
 [dependencies]
-kova-native = "0.1.1"
+kova-native = "0.2.0"
 ```
 
 ```rust

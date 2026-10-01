@@ -10,7 +10,7 @@ The package and Rust API use the new name throughout:
 
 ```toml
 [dependencies]
-kova-native = "0.1.1"
+kova-native = "0.2.0"
 ```
 
 Import the framework with `use kova_native::prelude::*`. Subsystem packages use
@@ -24,7 +24,7 @@ for package verification and release commands.
 cargo run -p showcase
 ```
 
-The showcase includes working buttons, checkbox, switch, slider, progress bar,
+The showcase includes working buttons, text inputs, checkbox, switch, slider, progress bar,
 theme switching, scrolling, SVG icons, gradients, shadows, glass backdrops,
 spring transitions, repeating animations and Unicode text. Use Tab and Enter to
 navigate and activate controls. The Motion and Typography pages use the same

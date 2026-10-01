@@ -25,3 +25,4 @@ slotmap.workspace = true
 smallvec.workspace = true
 rustc-hash.workspace = true
 log.workspace = true
+unicode-segmentation.workspace = true

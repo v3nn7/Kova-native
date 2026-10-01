@@ -210,6 +210,8 @@ pub struct PaintCx<'a> {
     pub(crate) text_color: Color,
     pub(crate) now: Instant,
     pub(crate) animating: &'a mut bool,
+    /// Earliest time this element asked to be repainted at.
+    pub(crate) wake_at: Option<Instant>,
     pub(crate) focused: bool,
     pub(crate) hovered: bool,
 }
@@ -258,6 +260,12 @@ impl PaintCx<'_> {
     /// Keeps frames coming (call every frame while animating).
     pub fn request_animation_frame(&mut self) {
         *self.animating = true;
+    }
+
+    /// Schedules a repaint at `at` without rendering every frame in between
+    /// (caret blinking, countdowns, delayed reveals).
+    pub fn request_frame_at(&mut self, at: Instant) {
+        self.wake_at = Some(self.wake_at.map_or(at, |w| w.min(at)));
     }
 
     pub(crate) fn draw_state(&self) -> DrawState {

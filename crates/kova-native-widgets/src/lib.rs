@@ -3,14 +3,17 @@
 //! the built-in widgets.
 
 mod context;
+mod editor;
 mod element;
 pub mod elements;
 mod style;
+mod text_input;
 mod theme;
 mod tree;
 pub mod widgets;
 
 pub use context::{Clipboard, EventCx, MeasureCx, MemoryClipboard, PaintCx, WindowCommand};
+pub use editor::TextEditor;
 pub use element::{AnyElement, DragEvent, Element, ElementBase, Interactive, IntoElement};
 pub use style::{BoxShadow, Style, Styled, TextRefinement};
 pub use theme::{Theme, set_theme, theme};

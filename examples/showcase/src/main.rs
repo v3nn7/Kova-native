@@ -15,6 +15,10 @@ struct Showcase {
     seats: Signal<i32>,
     stars: Signal<u8>,
     faq: [Signal<bool>; 2],
+    name: Signal<String>,
+    email: Signal<String>,
+    password: Signal<String>,
+    signed_up: Signal<Option<String>>,
 }
 
 impl Showcase {
@@ -33,6 +37,10 @@ impl Showcase {
             seats: signal(3),
             stars: signal(4),
             faq: [signal(true), signal(false)],
+            name: signal(String::new()),
+            email: signal(String::new()),
+            password: signal(String::new()),
+            signed_up: signal(None),
         }
     }
 }
@@ -144,7 +152,7 @@ fn navigation(state: Showcase) -> Div {
             column()
                 .gap(4.0)
                 .child(text("Rust. Native. GPU.").size(12.0).medium())
-                .child(label("Kova Native / 0.1.0").size(11.0)),
+                .child(label("Kova Native / 0.2.0").size(11.0)),
         )
 }
 
@@ -316,6 +324,89 @@ fn accent_picker(state: Showcase) -> Div {
     )
 }
 
+/// Why the sign-up form cannot be sent yet, if anything.
+fn form_problem(state: Showcase) -> Option<&'static str> {
+    let email = state.email.get();
+    if state.name.with(|n| n.trim().is_empty()) {
+        Some("Tell us your name.")
+    } else if !email.contains('@') || email.ends_with('@') {
+        Some("Enter an email address.")
+    } else if state.password.with(|p| p.chars().count() < 8) {
+        Some("Use at least 8 characters for the password.")
+    } else {
+        None
+    }
+}
+
+fn submit_form(state: Showcase) {
+    if form_problem(state).is_none() {
+        state
+            .signed_up
+            .set(Some(state.name.with(|n| n.trim().to_string())));
+    }
+}
+
+fn field(title: &'static str, input: TextInput) -> Div {
+    column()
+        .gap(6.0)
+        .child(label(title).size(12.0).medium())
+        .child(input.w_full())
+}
+
+fn sign_up(state: Showcase) -> Div {
+    card()
+        .gap(14.0)
+        .child(eyebrow("05 / TEXT INPUT"))
+        .child(
+            div()
+                .grid_cols(3)
+                .gap(12.0)
+                .child(field(
+                    "Name",
+                    text_input(state.name)
+                        .placeholder("Ada Lovelace")
+                        .id("name")
+                        .on_submit(|_, cx| cx.focus_next()),
+                ))
+                .child(field(
+                    "Email",
+                    text_input(state.email)
+                        .placeholder("ada@example.com")
+                        .id("email")
+                        .on_submit(|_, cx| cx.focus_next()),
+                ))
+                .child(field(
+                    "Password",
+                    text_input(state.password)
+                        .password()
+                        .placeholder("8+ characters")
+                        .id("password")
+                        .on_submit(move |_, _| submit_form(state)),
+                )),
+        )
+        .child(
+            row()
+                .justify_between()
+                .items_center()
+                .child(dynamic(move || {
+                    let t = theme();
+                    match (state.signed_up.get(), form_problem(state)) {
+                        (Some(name), _) => label(format!("Welcome aboard, {name}!"))
+                            .size(12.5)
+                            .color(t.success),
+                        (None, Some(problem)) => label(problem).size(12.5),
+                        (None, None) => label("Ready when you are.").size(12.5).color(t.text),
+                    }
+                }))
+                .child(
+                    button("Create account")
+                        .id("sign-up")
+                        .bind(move |s| s.disabled(form_problem(state).is_some()))
+                        .on_click(move |_| submit_form(state)),
+                ),
+        )
+}
+
 fn components(state: Showcase) -> Div {
     let t = theme();
     column()
@@ -404,6 +495,7 @@ fn components(state: Showcase) -> Div {
                         ),
                 ),
         )
+        .child(sign_up(state))
         .child(
             column()
                 .gap(10.0)

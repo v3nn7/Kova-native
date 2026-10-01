@@ -213,3 +213,33 @@ fn showcase_reactivity_focus_scroll_theme_and_widgets_integrate() {
     assert!(!state.clicks.is_alive());
     set_theme(Theme::dark());
 }
+
+#[test]
+fn sign_up_form_edits_with_keyboard_and_submits() {
+    let owner = Owner::new_root();
+    let state = owner.with(Showcase::new);
+    state.section.set(1);
+    let mut h = Harness::new(state);
+    h.frame();
+    h.click("name");
+    for (text, next) in [("Ada", "tab"), ("ada@example.com", "tab"), ("short", "")] {
+        for c in text.chars() {
+            h.dispatch(InputEvent::TextInput(c.to_string()));
+        }
+        if !next.is_empty() {
+            h.key(next);
+        }
+    }
+    h.frame();
+    assert_eq!(state.name.get(), "Ada");
+    assert_eq!(state.email.get(), "ada@example.com");
+    h.key("enter");
+    assert_eq!(state.signed_up.get(), None, "a short password is rejected");
+    for c in "-and-long".chars() {
+        h.dispatch(InputEvent::TextInput(c.to_string()));
+    }
+    h.key("enter");
+    assert_eq!(state.signed_up.get().as_deref(), Some("Ada"));
+    drop(h);
+    owner.dispose();
+}

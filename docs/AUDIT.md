@@ -28,7 +28,7 @@ Absence of markers did not imply that integration was complete.
 | kova-native-input | Mouse/key/IME event vocabulary, modifiers, click counting, actions, key bindings and chords | Chord timeout/replay is absent; platform translation and tree dispatch are separate layers |
 | kova-native-platform | Native windows, event loop, logical input conversion, scale changes, IME area/enable hooks, cursor, clipboard, waker and timer deadline | Window creation is synchronous; no accessibility bridge; cross-platform/device behavior needs live validation |
 | kova-native-widgets tree | Retained nodes, dirty queues, per-node bindings, reactive regions/views/lists, style inheritance, incremental layout, hit testing, capture/bubble, focus/Tab, hover/press/click/double-click, drag, wheel scrolling, window commands; transform-aware local event coordinates | No keyed reconciliation/virtual lists; hit clips under rotation and nested rounded masks are approximate |
-| kova-native-widgets elements | Div/row/column/stack/spacer, Text, image object-fit, SVG/icon, custom Canvas; theme tokens | No actual text-input/editor widget; accepts_text_input and IME are extension hooks only; images use their base corner radii rather than resolved animated radii |
+| kova-native-widgets elements | Div/row/column/stack/spacer, Text, image object-fit, SVG/icon, custom Canvas; theme tokens | Single-line `text_input` only (no multi-line editor); images use their base corner radii rather than resolved animated radii |
 | Built-in widgets | Button variants, card, badge, divider, heading/label, switch, checkbox, transform-aware slider, progress, spinner and segmented control | No menus/tooltips/dialogs |
 | kova-native-animation | Easing/cubic bezier/steps, Lerp, analytical springs, tweens, retargeting, delays, repeats and ping-pong | Visual transitions cover fill, border color, radii, shadows, opacity and transforms; layout size/position changes are immediate unless explicitly animated through bindings; spring retarget velocity direction needs further review |
 
@@ -120,12 +120,30 @@ Motion and light Typography were also captured and visually inspected at the
 same scale. Outputs are in `target/showcase-125.png`, `target/showcase-motion.png`
 and `target/showcase-typography-light.png`.
 
+## Continuation: editable text (2026-10-01)
+
+`text_input(Signal<String>)` is built on the existing Element hooks
+(`handle_event`, `accepts_text_input`, `ime_cursor_area`) and `TextLayout`
+hit testing. The editing model lives in `TextEditor`, independent of layout:
+grapheme-aware caret movement and deletion, word jumps (Ctrl, or Option on
+macOS), Shift selection, double-click word and triple-click selection, drag
+selection, clipboard, undo/redo grouped by word, a character limit, password
+masking and IME preedit/commit. `PaintCx::request_frame_at` and
+`FrameOutput::next_frame` let the caret blink through timed wake-ups instead of
+continuous frames. Text typed with AltGr (reported as Ctrl+Alt on Windows) was
+previously treated as a shortcut and never reached the focused element;
+`Modifiers::types_text` now accepts it.
+
+Covered by 7 editor unit tests, 4 element-tree tests (typing, clipboard,
+AltGr, IME, submit, word selection, masking, timed repaint) and a showcase
+form test. GPU captures confirmed caret, selection and masking. Native IME
+candidate placement has not been checked with a real CJK input method.
+
 ## Next work, in priority order
 
 Continue closing correctness gaps in event propagation, native focus/IME
 behavior and clipping. Improve text cursor/selection
-geometry for graphemes and RTL, then implement editable text through the existing
-Element hooks. Add atlas budgeting/eviction and measured performance baselines
+geometry for RTL and ligatures, then extend editing to multi-line text areas. Add atlas budgeting/eviction and measured performance baselines
 before caching large application scenes. Validate native Windows resize/HiDPI
 changes, then Linux/macOS and accessibility. Do not claim 120/144 FPS or full IME
 editing from a build or offscreen capture.

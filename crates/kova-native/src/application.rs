@@ -157,6 +157,7 @@ struct NativeWindow {
     clipboard: SystemClipboard,
     occluded: bool,
     animating: bool,
+    next_frame: Option<Instant>,
     redraw_pending: bool,
     retry_at: Option<Instant>,
     shown: bool,
@@ -217,6 +218,7 @@ impl Runner {
             clipboard: SystemClipboard(kova_native_platform::Clipboard::new()),
             occluded: false,
             animating: false,
+            next_frame: None,
             redraw_pending: false,
             retry_at: None,
             shown: false,
@@ -268,6 +270,7 @@ impl Runner {
         }
         state.gpu.queue.present(frame);
         state.animating = output.animating;
+        state.next_frame = output.next_frame;
         state.window.set_cursor(output.cursor);
         state
             .window
@@ -415,7 +418,15 @@ impl PlatformHandler for Runner {
                 return;
             }
         }
-        if state.tree.needs_frame() || state.animating || state.retry_at.is_some() {
+        let timed = match state.next_frame {
+            Some(at) if at > now => {
+                cx.wake_at(at);
+                false
+            }
+            Some(_) => true,
+            None => false,
+        };
+        if state.tree.needs_frame() || state.animating || timed || state.retry_at.is_some() {
             if !state.shown {
                 // Retry initial acquisition without relying on hidden-window
                 // redraw events (the retry deadline above prevents spinning).

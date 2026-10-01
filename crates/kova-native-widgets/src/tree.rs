@@ -137,6 +137,9 @@ pub struct FrameOutput {
     pub cursor: CursorStyle,
     /// Caret area for the IME when a text input is focused.
     pub ime_area: Option<Bounds>,
+    /// When the window should draw again even if nothing is invalidated
+    /// (timed repaints requested with `PaintCx::request_frame_at`).
+    pub next_frame: Option<Instant>,
     pub stats: FrameStats,
 }
 
@@ -177,6 +180,8 @@ pub struct ElementTree {
     animated_nodes: FxHashSet<NodeId>,
     needs_layout: bool,
     needs_paint: bool,
+    /// Earliest timed repaint requested while painting the last frame.
+    next_wake: Option<Instant>,
     ids: FxHashMap<ElementId, NodeId>,
     retained: FxHashMap<ElementId, Retained>,
     hitboxes: Vec<Hitbox>,
@@ -213,6 +218,7 @@ impl ElementTree {
             animated_nodes: FxHashSet::default(),
             needs_layout: true,
             needs_paint: true,
+            next_wake: None,
             ids: FxHashMap::default(),
             retained: FxHashMap::default(),
             hitboxes: Vec::new(),
@@ -603,6 +609,7 @@ impl ElementTree {
 
         cx.scene.clear();
         self.hitboxes.clear();
+        self.next_wake = None;
         let root = self.root;
         let parent = ParentPaint {
             origin: Point::ZERO,
@@ -628,6 +635,7 @@ impl ElementTree {
             animating,
             cursor: self.cursor,
             ime_area: self.ime_area(),
+            next_frame: self.next_wake,
             stats: self.stats,
         }
     }
@@ -921,6 +929,7 @@ impl ElementTree {
             text_color,
             now,
             animating,
+            wake_at: None,
             focused: node.focused,
             hovered: node.hovered,
         };
@@ -963,6 +972,7 @@ impl ElementTree {
                 None => element.paint(&mut pcx),
             }
         }
+        merge_wake(&mut self.next_wake, pcx.wake_at.take());
 
         let clip_logical = Bounds::new(
             parent.clip.bounds.origin / scale,
@@ -1052,6 +1062,7 @@ impl ElementTree {
             text_color,
             now,
             animating,
+            wake_at: None,
             focused: node.focused,
             hovered: node.hovered,
         };
@@ -1066,6 +1077,7 @@ impl ElementTree {
                 node.hovered,
             );
         }
+        merge_wake(&mut self.next_wake, pcx.wake_at.take());
     }
 
     fn ime_area(&self) -> Option<Bounds> {
@@ -1765,7 +1777,7 @@ impl ElementTree {
             return result;
         }
         if let (Some(text), Some(focused)) = (&e.keystroke.key_char, self.focused)
-            && !e.keystroke.modifiers.is_command_like()
+            && e.keystroke.modifiers.types_text()
             && self
                 .nodes
                 .get(focused)
@@ -1922,3 +1934,9 @@ fn paint_scrollbars(
 
 #[allow(dead_code)]
 fn _assert_shadow_type(_: BoxShadow) {}
+
+fn merge_wake(slot: &mut Option<Instant>, at: Option<Instant>) {
+    if let Some(at) = at {
+        *slot = Some(slot.map_or(at, |w| w.min(at)));
+    }
+}

@@ -15,7 +15,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! kova-native = "0.1.1"
+//! kova-native = "0.2.0"
 //! ```
 //!
 //! The package name uses hyphens; the Rust import is `kova_native`.
@@ -102,10 +102,10 @@
 //! It includes native smoke runs and GPU captures. See the
 //! [README](https://github.com/v3nn7/Kova-native#readme) for launch commands.
 //!
-//! The API is experimental. Editable text widgets, accessibility, arbitrary
-//! masks and custom shader registration are still pending. Text layout exposes
-//! caret/selection geometry, and the platform exposes IME hooks; these are
-//! extension points for a future editor. The
+//! The API is experimental. `text_input` provides single-line editing with
+//! selection, clipboard, undo and IME composition; multi-line editing,
+//! accessibility, arbitrary masks and custom shader registration are still
+//! pending. The
 //! [repository audit](https://github.com/v3nn7/Kova-native/blob/main/docs/AUDIT.md)
 //! records the implemented subsystems and validation boundaries.
 

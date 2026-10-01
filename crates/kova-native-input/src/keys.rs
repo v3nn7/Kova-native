@@ -37,6 +37,20 @@ impl Modifiers {
     pub fn is_command_like(&self) -> bool {
         self.control || self.alt || self.platform
     }
+
+    /// Whether a key pressed with these modifiers types its character
+    /// instead of acting as a shortcut. Windows reports AltGr (used for
+    /// characters like `ą` or `€`) as Ctrl+Alt; on macOS Option composes
+    /// characters.
+    pub fn types_text(&self) -> bool {
+        if self.platform {
+            false
+        } else if cfg!(target_os = "macos") {
+            !self.control
+        } else {
+            self.control == self.alt
+        }
+    }
 }
 
 /// Keys that do not produce text.
@@ -304,6 +318,24 @@ mod tests {
         );
         assert!(Keystroke::parse("hyper-x").is_err());
         assert!(Keystroke::parse("").is_err());
+    }
+
+    #[test]
+    fn altgr_types_text() {
+        let altgr = Modifiers {
+            control: true,
+            alt: true,
+            ..Default::default()
+        };
+        let ctrl = Modifiers {
+            control: true,
+            ..Default::default()
+        };
+        assert!(Modifiers::NONE.types_text());
+        assert!(!ctrl.types_text());
+        if !cfg!(target_os = "macos") {
+            assert!(altgr.types_text());
+        }
     }
 
     #[test]
