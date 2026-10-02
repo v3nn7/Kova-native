@@ -91,6 +91,7 @@ pub struct ElementBase {
     pub(crate) hover_styles: Vec<StyleFn>,
     pub(crate) active_styles: Vec<StyleFn>,
     pub(crate) focus_styles: Vec<StyleFn>,
+    pub(crate) focus_visible_styles: Vec<StyleFn>,
     pub(crate) disabled_styles: Vec<StyleFn>,
     /// Reactive style closures, re-run when the signals they read change.
     pub(crate) bound_styles: Vec<StyleFn>,
@@ -338,6 +339,16 @@ pub trait Interactive: Sized {
     /// Style applied while the element has keyboard focus.
     fn focus(mut self, f: impl Fn(Style) -> Style + 'static) -> Self {
         self.base_mut().focus_styles.push(Rc::new(f));
+        self
+    }
+
+    /// Style applied while the element has keyboard focus *and* the user is
+    /// navigating with the keyboard (like CSS `:focus-visible`). Use it for
+    /// focus rings on buttons and other controls, so clicking them with the
+    /// mouse does not leave a ring behind. Text fields usually want
+    /// [`Interactive::focus`] instead.
+    fn focus_visible(mut self, f: impl Fn(Style) -> Style + 'static) -> Self {
+        self.base_mut().focus_visible_styles.push(Rc::new(f));
         self
     }
 

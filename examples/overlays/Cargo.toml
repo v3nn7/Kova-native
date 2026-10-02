@@ -1,0 +1,10 @@
+[package]
+name = "overlays"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+kova-native = { workspace = true, features = ["record"] }

@@ -263,6 +263,18 @@ pub trait Styled: Sized {
         if condition { f(self) } else { self }
     }
 
+    /// Applies a modification using an optional value, if present.
+    ///
+    /// ```ignore
+    /// column().when_some(subtitle, |c, s| c.child(text(s)))
+    /// ```
+    fn when_some<T>(self, value: Option<T>, f: impl FnOnce(Self, T) -> Self) -> Self {
+        match value {
+            Some(value) => f(self, value),
+            None => self,
+        }
+    }
+
     // ---- display & flex -------------------------------------------------
 
     fn flex(self) -> Self {
@@ -349,6 +361,16 @@ pub trait Styled: Sized {
     fn self_stretch(self) -> Self {
         self.with_style(|s| s.layout.align_self = Some(Align::Stretch))
     }
+    /// Grid/stack items: align horizontally at the start of the cell.
+    fn justify_self_start(self) -> Self {
+        self.with_style(|s| s.layout.justify_self = Some(Align::Start))
+    }
+    fn justify_self_center(self) -> Self {
+        self.with_style(|s| s.layout.justify_self = Some(Align::Center))
+    }
+    fn justify_self_end(self) -> Self {
+        self.with_style(|s| s.layout.justify_self = Some(Align::End))
+    }
     fn justify_start(self) -> Self {
         self.with_style(|s| s.layout.justify_content = Some(Justify::Start))
     }
@@ -431,6 +453,20 @@ pub trait Styled: Sized {
     }
     fn mr(self, v: f32) -> Self {
         self.with_style(|s| s.layout.margin.right = Length::Px(v))
+    }
+    /// Horizontal margin (negative values pull the element outwards).
+    fn mx(self, v: f32) -> Self {
+        self.with_style(|s| {
+            s.layout.margin.left = Length::Px(v);
+            s.layout.margin.right = Length::Px(v)
+        })
+    }
+    /// Vertical margin.
+    fn my(self, v: f32) -> Self {
+        self.with_style(|s| {
+            s.layout.margin.top = Length::Px(v);
+            s.layout.margin.bottom = Length::Px(v)
+        })
     }
     /// `margin-left: auto` — pushes the element to the end of a row.
     fn ml_auto(self) -> Self {

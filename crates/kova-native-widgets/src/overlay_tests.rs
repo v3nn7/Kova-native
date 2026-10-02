@@ -303,3 +303,38 @@ fn keyed_list_moves_existing_items_and_disposes_removed_ones() {
     drop(ui);
     owner.dispose();
 }
+
+#[test]
+fn unfocused_key_events_reach_the_application_root() {
+    use kova_native_input::{KeyBinding, actions};
+    actions!(OpenThing);
+    let (owner, hits) = setup(|| signal(0));
+    let mut ui = Headless::new(Size::new(300.0, 200.0), move || {
+        column()
+            .on_action(move |_: &OpenThing, _| hits.update(|n| *n += 1))
+            .child(text("root"))
+    });
+    ui.key_bindings([KeyBinding::new("ctrl-k", OpenThing)]);
+    ui.press("ctrl-k");
+    assert_eq!(hits.get(), 1);
+    drop(ui);
+    owner.dispose();
+}
+
+#[test]
+fn focus_rings_follow_keyboard_modality() {
+    let (owner, ()) = setup(|| ());
+    let mut ui = Headless::new(Size::new(300.0, 200.0), move || {
+        row()
+            .child(crate::widgets::button("A").id("a"))
+            .child(crate::widgets::button("B").id("b"))
+    });
+    ui.click_id("a");
+    assert_eq!(ui.focused_id(), Some("a".into()));
+    assert!(!ui.tree().keyboard_modality(), "mouse focus hides rings");
+    ui.press("tab");
+    assert_eq!(ui.focused_id(), Some("b".into()));
+    assert!(ui.tree().keyboard_modality(), "Tab shows rings");
+    drop(ui);
+    owner.dispose();
+}

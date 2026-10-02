@@ -298,6 +298,7 @@ pub(crate) fn to_taffy(s: &LayoutStyle) -> taffy::Style {
         },
         align_items: s.align_items.map(align),
         align_self: s.align_self.map(align),
+        justify_self: s.justify_self.map(align),
         align_content: s.align_content.map(justify),
         justify_content: s.justify_content.map(justify),
         size: taffy::Size {

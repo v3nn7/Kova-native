@@ -178,6 +178,8 @@ pub struct LayoutStyle {
     pub wrap: FlexWrap,
     pub align_items: Option<Align>,
     pub align_self: Option<Align>,
+    /// Inline-axis alignment of a grid item within its cell.
+    pub justify_self: Option<Align>,
     pub align_content: Option<Justify>,
     pub justify_content: Option<Justify>,
     pub size: Axes<Length>,
@@ -207,6 +209,7 @@ impl Default for LayoutStyle {
             wrap: FlexWrap::NoWrap,
             align_items: None,
             align_self: None,
+            justify_self: None,
             align_content: None,
             justify_content: None,
             size: Axes::both(Length::Auto),

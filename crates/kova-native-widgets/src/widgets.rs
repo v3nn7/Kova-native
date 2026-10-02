@@ -12,6 +12,13 @@ use std::rc::Rc;
 
 pub use crate::text_input::{TextInput, text_input};
 
+mod content;
+mod data;
+mod overlays;
+pub use content::*;
+pub use data::*;
+pub use overlays::*;
+
 const CHECK_ICON: &[u8] = br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#000" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>"##;
 
 /// Visual style of a [`Button`].
@@ -31,7 +38,7 @@ pub struct Button {
     div: Div,
 }
 
-fn focus_ring(t: &Theme) -> BoxShadow {
+pub(crate) fn focus_ring(t: &Theme) -> BoxShadow {
     BoxShadow::new(0.0, 0.0, t.accent.with_alpha(0.55)).spread(3.0)
 }
 
@@ -105,7 +112,7 @@ pub fn button(label: impl Into<TextContent>) -> Button {
         .text_size(t.font_size)
         .cursor_pointer()
         .focusable()
-        .focus(move |s| s.shadow(ring))
+        .focus_visible(move |s| s.shadow(ring))
         .disabled_style(|s| s.opacity(0.45))
         .transition(Transition::new(160.ms()).easing(Easing::EaseOutCubic))
         .child(text(label).whitespace_nowrap());
@@ -259,7 +266,7 @@ pub fn switch(value: Signal<bool>) -> Div {
         .padding(3.0)
         .cursor_pointer()
         .focusable()
-        .focus(move |s| s.shadow(ring))
+        .focus_visible(move |s| s.shadow(ring))
         .bind(move |s| s.bg(if value.get() { on } else { off }))
         .transition(Transition::new(180.ms()))
         .on_click(move |_| value.toggle())
@@ -287,7 +294,7 @@ pub fn checkbox(value: Signal<bool>) -> Div {
         .center()
         .cursor_pointer()
         .focusable()
-        .focus(move |s| s.shadow(ring))
+        .focus_visible(move |s| s.shadow(ring))
         .bind(move |s| {
             if value.get() {
                 s.bg(accent).border_color(accent)
@@ -363,7 +370,7 @@ pub fn slider(value: Signal<f32>) -> Div {
                     s.scale(1.15)
                         .shadow(BoxShadow::new(0.0, 0.0, accent.with_alpha(0.35)).spread(5.0))
                 })
-                .focus(move |s| s.shadow(ring))
+                .focus_visible(move |s| s.shadow(ring))
                 .transition(Transition::new(120.ms())),
         )
 }
@@ -480,7 +487,7 @@ pub fn radio_group(options: &[&'static str], selected: Signal<usize>) -> Div {
                         .border(1.5)
                         .center()
                         .focusable()
-                        .focus(move |s| s.shadow(ring))
+                        .focus_visible(move |s| s.shadow(ring))
                         .on_key_down(move |e, cx| {
                             use kova_native_input::{Key, NamedKey};
                             let next = match e.keystroke.key {
@@ -545,7 +552,7 @@ pub fn tabs(options: &[&'static str], selected: Signal<usize>) -> Div {
                 .cursor_pointer()
                 .focusable()
                 .rounded(t.radius_small)
-                .focus(move |s| s.shadow(ring))
+                .focus_visible(move |s| s.shadow(ring))
                 .on_click(move |_| selected.set(i))
                 .bind(move |s| s.text_color(if selected.get() == i { text_c } else { muted }))
                 .hover(move |s| s.text_color(text_c))
@@ -594,7 +601,7 @@ pub fn chip(label: impl Into<TextContent>, selected: Signal<bool>) -> Div {
         .font_weight(FontWeight::Medium)
         .cursor_pointer()
         .focusable()
-        .focus(move |s| s.shadow(ring))
+        .focus_visible(move |s| s.shadow(ring))
         .bind(move |s| {
             if selected.get() {
                 s.bg(soft).border_color(accent).text_color(text_c)
@@ -736,7 +743,7 @@ pub fn stepper(value: Signal<i32>, min: i32, max: i32) -> Div {
         .border(1.0)
         .border_color(t.border)
         .focusable()
-        .focus(move |s| s.shadow(ring))
+        .focus_visible(move |s| s.shadow(ring))
         .on_key_down(move |e, cx| {
             use kova_native_input::{Key, NamedKey};
             let delta = match e.keystroke.key {
@@ -780,7 +787,7 @@ pub fn accordion<E: IntoElement>(
                 .py(11.0)
                 .cursor_pointer()
                 .focusable()
-                .focus(move |s| s.shadow(ring))
+                .focus_visible(move |s| s.shadow(ring))
                 .hover(move |s| s.bg(raised))
                 .transition(Transition::new(120.ms()))
                 .on_click(move |_| open.toggle())
@@ -812,49 +819,6 @@ pub fn accordion<E: IntoElement>(
 
 fn dynamic_section(build: impl Fn() -> Option<Div> + 'static) -> crate::elements::Region {
     crate::elements::Region::new(move || build().into_iter().map(IntoElement::into_any).collect())
-}
-
-/// Wraps `trigger` so that hovering it shows a small label above it.
-pub fn tooltip(trigger: impl IntoElement, tip: impl Into<TextContent>) -> Div {
-    let t = theme();
-    let visible = kova_native_core::signal(false);
-    let (bg, fg) = if t.dark {
-        (rgb_hex(0xf4f5f8), rgb_hex(0x14161c))
-    } else {
-        (rgb_hex(0x1c1f27), rgb_hex(0xf4f5f8))
-    };
-    div()
-        .relative()
-        .on_hover(move |hovered, _| visible.set(hovered))
-        .child(trigger)
-        .child(
-            row()
-                .absolute()
-                .bottom(relative(1.0))
-                .left(0.0)
-                .px(9.0)
-                .py(5.0)
-                .rounded(t.radius_small)
-                .bg(bg)
-                .text_color(fg)
-                .text_size(11.5)
-                .font_weight(FontWeight::Medium)
-                .pointer_events_none()
-                .shadow(BoxShadow::new(4.0, 14.0, Color::BLACK.with_alpha(0.3)))
-                .bind(move |s| {
-                    if visible.get() {
-                        s.opacity(1.0).translate_y(-8.0)
-                    } else {
-                        s.opacity(0.0).translate_y(-4.0)
-                    }
-                })
-                .transition(Transition::new(140.ms()).easing(Easing::EaseOutCubic))
-                .child(text(tip).whitespace_nowrap()),
-        )
-}
-
-fn rgb_hex(hex: u32) -> Color {
-    kova_native_core::rgb(hex)
 }
 
 /// A star rating bound to a `0..=max` signal. Clicking the current value clears it.

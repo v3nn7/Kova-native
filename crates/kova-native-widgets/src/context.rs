@@ -45,6 +45,8 @@ pub enum WindowCommand {
 
 pub(crate) enum Command {
     Focus(NodeId),
+    /// Focus `NodeId` only if nothing is focused when the command applies.
+    RestoreFocus(NodeId),
     FocusId(ElementId),
     Blur,
     FocusNext,

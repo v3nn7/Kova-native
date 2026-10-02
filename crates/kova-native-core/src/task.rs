@@ -254,7 +254,7 @@ impl Future for Sleep {
         });
         let fire = state.clone();
         // Not tied to the current owner: the sleeping future owns the timer.
-        let id = crate::timer::set_timeout_detached(self.duration, move || {
+        let id = crate::timer::set_timeout_unowned(self.duration, move || {
             fire.done.set(true);
             if let Some(waker) = fire.waker.borrow_mut().take() {
                 waker.wake();

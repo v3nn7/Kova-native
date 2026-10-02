@@ -26,3 +26,9 @@ kova-native-widgets.workspace = true
 pollster.workspace = true
 log.workspace = true
 env_logger.workspace = true
+gif = { workspace = true, optional = true }
+
+[features]
+default = []
+# Scripted GIF recordings of a UI (`kova_native::record`).
+record = ["dep:gif"]

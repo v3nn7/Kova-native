@@ -110,6 +110,8 @@
 //! records the implemented subsystems and validation boundaries.
 
 mod application;
+#[cfg(feature = "record")]
+pub mod record;
 
 pub use application::{Application, RunReport, WindowOptions};
 pub use kova_native_animation as animation;
@@ -133,9 +135,7 @@ pub mod prelude {
     pub use kova_native_input::{Action, Key, KeyBinding, Keystroke, Modifiers, NamedKey, actions};
     pub use kova_native_layout::{Length, Track, auto, pct, px, relative};
     pub use kova_native_text::{FontStyle, FontWeight, LineHeight, TextAlign, TextStyle, TextWrap};
-    pub use kova_native_widgets::elements::*;
-    pub use kova_native_widgets::widgets::*;
-    pub use kova_native_widgets::{
-        BoxShadow, Interactive, IntoElement, Style, Styled, Theme, set_theme, theme,
-    };
+    pub use kova_native_widgets::headless::Headless;
+    pub use kova_native_widgets::icons;
+    pub use kova_native_widgets::prelude::*;
 }

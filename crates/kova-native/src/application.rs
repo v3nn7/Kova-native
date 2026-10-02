@@ -25,6 +25,10 @@ pub struct WindowOptions {
     pub background: Color,
     /// Inherited text defaults for the root element tree.
     pub text_style: TextStyle,
+    /// When true (the default) the root background, text color and text
+    /// size follow the current theme instead of `background`/`text_style`,
+    /// so theme switches restyle text that has no explicit color.
+    pub follow_theme: bool,
 }
 
 impl Default for WindowOptions {
@@ -39,6 +43,7 @@ impl Default for WindowOptions {
                 color: t.text,
                 ..Default::default()
             },
+            follow_theme: true,
         }
     }
 }
@@ -197,11 +202,16 @@ impl Runner {
         let surface = WindowSurface::new(&gpu, raw_surface, w, h, self.options.surface)?;
         let renderer = Renderer::new(&gpu);
         log::debug!("kova-native: mounting element tree");
-        let mut tree = ElementTree::new(
-            self.build.take().expect("builder mounted once"),
-            self.options.text_style.clone(),
-            self.options.background,
-        );
+        let build = self.build.take().expect("builder mounted once");
+        let mut tree = if self.options.follow_theme {
+            ElementTree::themed(build)
+        } else {
+            ElementTree::new(
+                build,
+                self.options.text_style.clone(),
+                self.options.background,
+            )
+        };
         tree.set_viewport(window.logical_size(), window.scale_factor());
         let waker = cx.waker();
         tree.set_waker(move || waker.wake());
@@ -263,7 +273,11 @@ impl Runner {
             &view,
             state.surface.format(),
             size,
-            self.options.background,
+            if self.options.follow_theme {
+                kova_native_widgets::theme().background
+            } else {
+                self.options.background
+            },
         );
         state.window.pre_present_notify();
         if !state.shown {

@@ -41,7 +41,7 @@ use kova_native_input::{
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, ScrollDelta, ScrollWheelEvent,
 };
 use kova_native_render::{Atlas, GpuContext, Renderer, Scene};
-use kova_native_text::{TextStyle, TextSystem};
+use kova_native_text::TextSystem;
 
 /// Simulated frame interval used while advancing time.
 pub const FRAME: Duration = Duration::from_micros(16_667);
@@ -70,16 +70,10 @@ pub struct Headless {
 }
 
 impl Headless {
-    /// Mounts `build` at `size` (logical px, scale 1) using the current theme,
-    /// and produces the first frame.
+    /// Mounts `build` at `size` (logical px, scale 1) in a tree that follows
+    /// the current theme ([`ElementTree::themed`]), and produces the first frame.
     pub fn new<E: IntoElement>(size: Size, mut build: impl FnMut() -> E + 'static) -> Self {
-        let t = crate::theme();
-        let text_style = TextStyle {
-            size: t.font_size,
-            color: t.text,
-            ..Default::default()
-        };
-        let tree = ElementTree::new(move || build().into_any(), text_style, t.background);
+        let tree = ElementTree::themed(move || build().into_any());
         Self::from_tree(tree, size)
     }
 

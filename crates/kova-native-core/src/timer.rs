@@ -91,8 +91,10 @@ fn schedule_detached(delay: Duration, callback: Callback) -> TimerId {
     })
 }
 
-/// Like [`set_timeout`], but never cancelled by owner disposal.
-pub(crate) fn set_timeout_detached(delay: Duration, f: impl FnOnce() + 'static) -> TimerId {
+/// Like [`set_timeout`], but never cancelled by owner disposal. The
+/// callback must tolerate state that was disposed in the meantime (check
+/// [`Signal::is_alive`](crate::Signal::is_alive)).
+pub fn set_timeout_unowned(delay: Duration, f: impl FnOnce() + 'static) -> TimerId {
     schedule_detached(delay, Callback::Once(Box::new(f)))
 }
 

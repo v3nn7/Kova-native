@@ -7,6 +7,7 @@ mod editor;
 mod element;
 pub mod elements;
 pub mod headless;
+pub mod icons;
 pub mod responsive;
 mod style;
 mod text_input;
@@ -38,3 +39,6 @@ pub mod prelude {
 
 #[cfg(test)]
 mod overlay_tests;
+
+#[cfg(test)]
+mod widget_tests;

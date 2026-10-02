@@ -206,6 +206,8 @@ pub struct ElementTree {
     overlay: NodeId,
     /// Nodes with `on_click_outside` handlers.
     outside_listeners: FxHashSet<NodeId>,
+    /// Whether the last interaction was the keyboard (`focus_visible`).
+    keyboard_modality: bool,
     root_owner: Owner,
     layout: LayoutEngine<NodeId>,
     queue: Rc<RefCell<DirtyQueue>>,
@@ -234,11 +236,34 @@ pub struct ElementTree {
 }
 
 impl ElementTree {
-    /// Creates a tree whose root is a reactive region running `build`.
+    /// Creates a tree whose root is a reactive region running `build`, with
+    /// a fixed root text style and background.
     pub fn new(
         build: impl FnMut() -> AnyElement + 'static,
         root_text_style: TextStyle,
         background: Color,
+    ) -> Self {
+        Self::create(build, root_text_style, background, false)
+    }
+
+    /// Creates a tree whose root background, text color and text size follow
+    /// the current [`Theme`](crate::Theme), so text without an explicit color
+    /// stays readable when [`set_theme`](crate::set_theme) switches themes.
+    pub fn themed(build: impl FnMut() -> AnyElement + 'static) -> Self {
+        let t = crate::theme();
+        let style = TextStyle {
+            size: t.font_size,
+            color: t.text,
+            ..Default::default()
+        };
+        Self::create(build, style, t.background, true)
+    }
+
+    fn create(
+        build: impl FnMut() -> AnyElement + 'static,
+        root_text_style: TextStyle,
+        background: Color,
+        follow_theme: bool,
     ) -> Self {
         let root_owner = Owner::new_root();
         let mut tree = ElementTree {
@@ -246,6 +271,7 @@ impl ElementTree {
             root: NodeId::default(),
             overlay: NodeId::default(),
             outside_listeners: FxHashSet::default(),
+            keyboard_modality: false,
             root_owner,
             layout: LayoutEngine::new(),
             queue: Rc::new(RefCell::new(DirtyQueue::default())),
@@ -277,7 +303,7 @@ impl ElementTree {
         });
         tree.overlay = tree.mount(AnyElement::new(overlay), None);
         let mut build = build;
-        let root = crate::elements::Region::new(move || vec![build()]).with_style(|s| {
+        let mut root = crate::elements::Region::new(move || vec![build()]).with_style(|s| {
             // A 1x1 grid stretches the user's root element over the
             // whole window unless it sets an explicit size.
             s.layout.display = kova_native_layout::Display::Grid;
@@ -285,6 +311,13 @@ impl ElementTree {
             s.layout.grid_mut().template_rows = vec![kova_native_layout::Track::Fr(1.0)];
             s.background = Some(background.into());
         });
+        if follow_theme {
+            use crate::element::Interactive;
+            root = root.bind(|s| {
+                let t = crate::theme();
+                s.bg(t.background).text_color(t.text).text_size(t.font_size)
+            });
+        }
         tree.root = tree.mount(AnyElement::new(root), None);
         tree
     }
@@ -765,12 +798,20 @@ impl ElementTree {
         if self.focused == Some(id) {
             self.focused = None;
         }
-        if node.element.base().trap_focus
-            && self.focused.is_none()
-            && let Some(previous) = node.restore_focus
-            && self.nodes.contains_key(previous)
-        {
-            self.commands.push(Command::Focus(previous));
+        if node.element.base().trap_focus {
+            // Traps that would restore focus into this one restore to its
+            // own target instead (a dialog opened from a menu item).
+            for (_, other) in self.nodes.iter_mut() {
+                if other.restore_focus == Some(id) {
+                    other.restore_focus = node.restore_focus;
+                }
+            }
+            if self.focused.is_none()
+                && let Some(previous) = node.restore_focus
+                && self.nodes.contains_key(previous)
+            {
+                self.commands.push(Command::RestoreFocus(previous));
+            }
         }
         self.hovered.retain(|n| *n != id);
         if self.drag.as_ref().is_some_and(|d| d.node == id) {
@@ -980,6 +1021,11 @@ impl ElementTree {
         if node.focused {
             for f in &base.focus_styles {
                 style = f(style);
+            }
+            if self.keyboard_modality {
+                for f in &base.focus_visible_styles {
+                    style = f(style);
+                }
             }
         }
         if disabled {
@@ -1783,7 +1829,7 @@ impl ElementTree {
             && let Some(node) = self.nodes.get_mut(old)
         {
             node.focused = false;
-            if !node.element.base().focus_styles.is_empty() {
+            if has_focus_styles(node) {
                 self.enqueue_style(old);
             }
             self.needs_paint = true;
@@ -1794,7 +1840,7 @@ impl ElementTree {
         {
             node.focused = true;
             self.focused = Some(id);
-            if !node.element.base().focus_styles.is_empty() {
+            if has_focus_styles(node) {
                 self.enqueue_style(id);
             }
             self.needs_paint = true;
@@ -1879,6 +1925,11 @@ impl ElementTree {
             for command in commands {
                 match command {
                     Command::Focus(id) => self.set_focus(Some(id), text, clipboard),
+                    Command::RestoreFocus(id) => {
+                        if self.focused.is_none() {
+                            self.set_focus(Some(id), text, clipboard);
+                        }
+                    }
                     Command::FocusId(eid) => {
                         let id = self.ids.get(&eid).copied();
                         self.set_focus(id, text, clipboard);
@@ -1938,9 +1989,45 @@ impl ElementTree {
         handled
     }
 
+    /// Switches between pointer and keyboard interaction, restyling the
+    /// focused node when its `focus_visible` styles start or stop applying.
+    fn set_keyboard_modality(&mut self, keyboard: bool) {
+        if self.keyboard_modality == keyboard {
+            return;
+        }
+        self.keyboard_modality = keyboard;
+        if let Some(id) = self.focused
+            && self
+                .nodes
+                .get(id)
+                .is_some_and(|n| !n.element.base().focus_visible_styles.is_empty())
+        {
+            self.enqueue_style(id);
+        }
+    }
+
+    /// Whether focus rings (`focus_visible` styles) are currently shown.
+    pub fn keyboard_modality(&self) -> bool {
+        self.keyboard_modality
+    }
+
+    /// The path keyboard events and actions travel: to the focused node, or
+    /// to the application's root element when nothing is focused (so its
+    /// `on_action`/`on_key_down` handlers act as window-wide shortcuts).
+    fn focus_path(&self) -> Vec<NodeId> {
+        let target = self.focused.unwrap_or_else(|| {
+            self.nodes[self.root]
+                .children
+                .first()
+                .copied()
+                .unwrap_or(self.root)
+        });
+        self.path_to(target)
+    }
+
     /// Dispatches an action along the current focus path.
     pub fn dispatch_action(&mut self, action: &dyn Action, env: &mut DispatchContext) -> bool {
-        let path = self.path_to(self.focused.unwrap_or(self.root));
+        let path = self.focus_path();
         self.dispatch_action_on_path(&path, action, env)
     }
 
@@ -1987,6 +2074,7 @@ impl ElementTree {
                 self.update_hover(env.text);
             }
             InputEvent::MouseDown(e) => {
+                self.set_keyboard_modality(false);
                 self.mouse = Some(e.position);
                 self.update_hover(env.text);
                 let path = self
@@ -2115,10 +2203,15 @@ impl ElementTree {
                 }
             }
             InputEvent::KeyDown(e) => {
+                if !e.keystroke.modifiers.is_command_like()
+                    || matches!(e.keystroke.key, Key::Named(NamedKey::Tab))
+                {
+                    self.set_keyboard_modality(true);
+                }
                 result = self.dispatch_key_down(e, event, env);
             }
             InputEvent::KeyUp(e) => {
-                let path = self.path_to(self.focused.unwrap_or(self.root));
+                let path = self.focus_path();
                 let (stopped, _) =
                     self.dispatch_phases(&path, e, Some(event), |h| h.key_up.clone(), env);
                 result.handled = stopped;
@@ -2177,7 +2270,7 @@ impl ElementTree {
         env: &mut DispatchContext,
     ) -> DispatchResult {
         let mut result = DispatchResult::default();
-        let path = self.path_to(self.focused.unwrap_or(self.root));
+        let path = self.focus_path();
         let contexts: SmallVec<[&'static str; 4]> = path
             .iter()
             .filter_map(|id| {
@@ -2398,6 +2491,11 @@ fn paint_scrollbars(
 
 #[allow(dead_code)]
 fn _assert_shadow_type(_: BoxShadow) {}
+
+fn has_focus_styles(node: &Node) -> bool {
+    let base = node.element.base();
+    !base.focus_styles.is_empty() || !base.focus_visible_styles.is_empty()
+}
 
 fn merge_wake(slot: &mut Option<Instant>, at: Option<Instant>) {
     if let Some(at) = at {

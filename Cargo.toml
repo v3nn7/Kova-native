@@ -31,6 +31,7 @@ winit = "0.30.13"
 taffy = { version = "0.14", default-features = false, features = ["std", "taffy_tree", "flexbox", "grid", "block_layout", "content_size"] }
 cosmic-text = "0.19"
 resvg = { version = "0.48", default-features = false }
+gif = "0.14"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 etagere = "0.2.15"
 bytemuck = { version = "1.25", features = ["derive"] }
