@@ -15,7 +15,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! kova-native = "0.2.0"
+//! kova-native = "0.3.0"
 //! ```
 //!
 //! The package name uses hyphens; the Rust import is `kova_native`.

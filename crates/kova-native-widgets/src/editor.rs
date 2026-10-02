@@ -25,13 +25,15 @@ struct Snapshot {
     anchor: usize,
 }
 
-/// Single-line text with a caret, selection and undo/redo.
+/// Text with a caret, selection and undo/redo. Single-line by default;
+/// [`TextEditor::set_multiline`] keeps line breaks and tabs.
 #[derive(Clone, Debug, Default)]
 pub struct TextEditor {
     text: String,
     cursor: usize,
     anchor: usize,
     max_chars: Option<usize>,
+    multiline: bool,
     undo: Vec<Snapshot>,
     redo: Vec<Snapshot>,
     /// Kind of the previous edit while consecutive edits may be merged into
@@ -42,7 +44,7 @@ pub struct TextEditor {
 impl TextEditor {
     /// An editor holding `text` with the caret at its end.
     pub fn new(text: impl Into<String>) -> Self {
-        let text = sanitize(&text.into());
+        let text = sanitize(&text.into(), false);
         let end = text.len();
         TextEditor {
             text,
@@ -55,6 +57,22 @@ impl TextEditor {
     /// Limits the text to `max` characters (Unicode scalar values).
     pub fn set_max_chars(&mut self, max: Option<usize>) {
         self.max_chars = max;
+    }
+
+    /// Allows line breaks (`\n`; `\r\n` and `\r` are normalized) and tabs.
+    /// Switching to single-line removes them from the current text.
+    pub fn set_multiline(&mut self, multiline: bool) {
+        self.multiline = multiline;
+        let text = sanitize(&self.text, multiline);
+        if text != self.text {
+            self.text = text;
+            self.cursor = self.snap(self.cursor.min(self.text.len()));
+            self.anchor = self.snap(self.anchor.min(self.text.len()));
+        }
+    }
+
+    pub fn is_multiline(&self) -> bool {
+        self.multiline
     }
 
     pub fn text(&self) -> &str {
@@ -87,7 +105,7 @@ impl TextEditor {
     /// Replaces the whole text from outside (e.g. a bound signal changed).
     /// Clears history; keeps the caret where possible.
     pub fn set_text(&mut self, text: &str) {
-        let text = sanitize(text);
+        let text = sanitize(text, self.multiline);
         if text == self.text {
             return;
         }
@@ -158,9 +176,10 @@ impl TextEditor {
     // ---- editing ----------------------------------------------------------------
 
     /// Inserts `text` at the caret, replacing the selection. Control
-    /// characters and line breaks are removed. Returns whether the text changed.
+    /// characters are removed (line breaks and tabs too, unless multi-line).
+    /// Returns whether the text changed.
     pub fn insert(&mut self, text: &str) -> bool {
-        let mut text = sanitize(text);
+        let mut text = sanitize(text, self.multiline);
         if let Some(max) = self.max_chars {
             let kept = self.text.chars().count() - self.selected_text().chars().count();
             let room = max.saturating_sub(kept);
@@ -366,12 +385,20 @@ fn is_word(segment: &str) -> bool {
     segment.chars().any(char::is_alphanumeric)
 }
 
-/// Single-line fields keep printable text only.
-fn sanitize(text: &str) -> String {
-    if text.chars().any(char::is_control) {
-        text.chars().filter(|c| !c.is_control()).collect()
+/// Single-line fields keep printable text only; multi-line fields also keep
+/// normalized line breaks and tabs.
+fn sanitize(text: &str, multiline: bool) -> String {
+    if !text.chars().any(char::is_control) {
+        return text.to_string();
+    }
+    if multiline {
+        text.replace("\r\n", "\n")
+            .replace('\r', "\n")
+            .chars()
+            .filter(|c| !c.is_control() || *c == '\n' || *c == '\t')
+            .collect()
     } else {
-        text.to_string()
+        text.chars().filter(|c| !c.is_control()).collect()
     }
 }
 
@@ -470,6 +497,16 @@ mod tests {
         e.select(0, 1);
         e.insert("é🙂");
         assert_eq!(e.text(), "élin", "only what fits is inserted");
+    }
+
+    #[test]
+    fn multiline_keeps_normalized_breaks() {
+        let mut e = TextEditor::new("");
+        e.set_multiline(true);
+        e.insert("a\r\nb\rc\td\u{7}");
+        assert_eq!(e.text(), "a\nb\nc\td");
+        e.set_multiline(false);
+        assert_eq!(e.text(), "abcd");
     }
 
     #[test]

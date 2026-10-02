@@ -471,3 +471,70 @@ fn code_block_copies_its_source_and_search_clears() {
         },
     );
 }
+
+#[test]
+fn text_area_edits_lines_grows_and_submits() {
+    run(
+        || (signal(String::new()), signal(String::new())),
+        |(notes, submitted)| {
+            column().padding(20.0).w(320.0).child(
+                text_area(notes)
+                    .id("notes")
+                    .rows(2)
+                    .max_rows(4)
+                    .on_submit(move |text, _| submitted.set(text.to_string())),
+            )
+        },
+        |ui, (notes, submitted)| {
+            let initial = ui.bounds_of("notes").unwrap().height();
+            ui.click_id("notes");
+            ui.type_text("first");
+            ui.press("enter");
+            ui.type_text("second line");
+            assert_eq!(notes.get(), "first\nsecond line");
+            // Up keeps the column (clamped to the shorter line), Down returns.
+            ui.press("up");
+            ui.type_text("!");
+            assert_eq!(notes.get(), "first!\nsecond line");
+            ui.press("down");
+            ui.press("end");
+            ui.type_text("?");
+            assert_eq!(notes.get(), "first!\nsecond line?");
+            ui.press("ctrl-home");
+            ui.type_text(">");
+            assert_eq!(notes.get(), ">first!\nsecond line?");
+
+            for _ in 0..3 {
+                ui.press("ctrl-end");
+                ui.press("enter");
+                ui.type_text("more");
+            }
+            let grown = ui.bounds_of("notes").unwrap().height();
+            assert!(
+                grown > initial + 20.0,
+                "grows with content: {initial} -> {grown}"
+            );
+            ui.press("ctrl-end");
+            ui.press("enter");
+            ui.type_text("even more");
+            let capped = ui.bounds_of("notes").unwrap().height();
+            assert!(
+                (capped - grown).abs() < 1.0,
+                "stops at max_rows: {grown} vs {capped}"
+            );
+
+            ui.press("ctrl-enter");
+            assert_eq!(submitted.get(), notes.get());
+            assert!(
+                !notes.get().ends_with("\n\n"),
+                "Ctrl+Enter does not insert a break"
+            );
+
+            // Pasted Windows line endings are normalized.
+            ui.press("ctrl-a");
+            ui.set_clipboard("a\r\nb");
+            ui.press("ctrl-v");
+            assert_eq!(notes.get(), "a\nb");
+        },
+    );
+}

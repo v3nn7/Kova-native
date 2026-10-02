@@ -10,7 +10,7 @@ The package and Rust API use the new name throughout:
 
 ```toml
 [dependencies]
-kova-native = "0.2.0"
+kova-native = "0.3.0"
 ```
 
 Import the framework with `use kova_native::prelude::*`. Subsystem packages use
@@ -35,6 +35,31 @@ cargo run -p showcase -- --page components
 cargo run -p showcase -- --page motion
 cargo run -p showcase -- --page typography --light
 ```
+
+## What's new in 0.3.0
+
+![Overlays example](docs/media/overlays.gif)
+
+- **Overlay layer**: `portal()` with anchored placement, `dialog`, `confirm_dialog`,
+  `drawer`, `popover`, `dropdown_menu`, `context_menu`, `select`, `tooltip`,
+  toasts (`toast(..).show()` + `toaster()`) and `command_palette`.
+- **Data and content widgets**: `data_table` (sortable, keyed rows), `pagination`,
+  `breadcrumbs`, `code_block`, `copy_button`, `empty_state`, `search_input`,
+  `status_badge`, `stat`, `icon_button` and a built-in `icons` set.
+- **Editable multi-line text**: `text_area` with wrapping, auto-grow, vertical caret
+  movement and Ctrl+Enter submit.
+- **Arbitrary masks**: `.mask(Mask::fade(..))`, `Mask::svg(..)`, image masks.
+- **Custom shaders**: `register_shader` (WGSL validated with naga) and `shader(id)`.
+- **Framework**: keyed lists (`keyed`), UI timers (`timer::set_timeout`), async tasks
+  (`task::spawn_local`, `spawn_blocking`, `sleep`), focus traps, `autofocus`,
+  `focus_visible`, `on_click_outside`, reactive breakpoints (`breakpoint()`,
+  `responsive`), themed window roots and a `Headless` driver for tests.
+- **Recording**: `kova_native::record::Recorder` (feature `record`) turns scripted
+  headless runs into GIFs: `cargo run -p overlays --release -- --record out.gif`.
+
+Breaking changes: `AtlasKey` has a `Custom` variant, `WindowOptions` has
+`follow_theme`, `tab_index(-1)` now means "focusable but skipped by Tab", and
+built-in focus rings only show during keyboard navigation.
 
 ## A small application
 
@@ -79,8 +104,8 @@ cargo test --workspace
 ./scripts/smoke-examples.ps1
 ```
 
-The five existing example packages are `hello_window`, `buttons`, `layout`,
-`animation` and `showcase`. Every example accepts `--smoke`, runs a real native
+The example packages are `hello_window`, `buttons`, `layout`, `animation`,
+`showcase` and `overlays`. Every example accepts `--smoke`, runs a real native
 window for a bounded time and requires at least one presented frame. Static
 examples sleep after invalidation settles; animated examples keep requesting
 frames. Presentation uses the configured display vsync; this is not an FPS

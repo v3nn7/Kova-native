@@ -152,7 +152,7 @@ fn navigation(state: Showcase) -> Div {
             column()
                 .gap(4.0)
                 .child(text("Rust. Native. GPU.").size(12.0).medium())
-                .child(label("Kova Native / 0.2.0").size(11.0)),
+                .child(label(concat!("Kova Native / ", env!("CARGO_PKG_VERSION"))).size(11.0)),
         )
 }
 

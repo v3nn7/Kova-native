@@ -1,4 +1,4 @@
-//! Single-line editable text.
+//! Editable text: single-line fields and multi-line text areas.
 
 use crate::context::{EventCx, MeasureCx, PaintCx};
 use crate::editor::TextEditor;
@@ -57,6 +57,20 @@ struct InputState {
     blink_epoch: Instant,
     was_focused: bool,
     drag: DragUnit,
+    /// Multi-line mode (text areas): wrapping, vertical caret movement.
+    multiline: bool,
+    /// Visible rows: minimum and maximum before scrolling (multi-line).
+    rows: (usize, usize),
+    /// Vertical scroll of the text inside the content box (multi-line).
+    scroll_y: f32,
+    /// Height of the content box (last paint).
+    view_height: f32,
+    /// Wrap width of the layout (multi-line).
+    wrap_width: Option<f32>,
+    /// Text height used for the last measurement (relayout when it changes).
+    measured_height: f32,
+    /// Horizontal position kept while moving the caret vertically.
+    goal_x: Option<f32>,
 }
 
 impl InputState {
@@ -134,15 +148,55 @@ impl InputState {
 
     fn sync_layout(&mut self, ts: &mut TextSystem) {
         let Some(style) = &self.style else { return };
+        let width = if self.multiline {
+            self.wrap_width
+        } else {
+            None
+        };
         let display = self.display();
         self.layout.set(ts, &display, style);
-        self.layout.layout(ts, None);
+        self.layout.layout(ts, width);
         if self.placeholder_layout.text() != self.placeholder.as_ref()
             || self.placeholder_layout.style() != Some(style)
         {
             self.placeholder_layout.set(ts, &self.placeholder, style);
-            self.placeholder_layout.layout(ts, None);
         }
+        self.placeholder_layout.layout(ts, width);
+    }
+
+    /// Height of the laid out text (at least one line).
+    fn text_height(&self) -> f32 {
+        self.layout.size().height.max(self.line_height())
+    }
+
+    /// Content height for multi-line fields: the text height clamped to
+    /// the configured row range.
+    fn area_height(&self) -> f32 {
+        let lh = self.line_height();
+        let (min, max) = self.rows;
+        self.text_height()
+            .clamp(lh * min as f32, lh * max.max(min) as f32)
+    }
+
+    /// Caret target `lines` visual lines above (negative) or below.
+    fn vertical_target(&mut self, lines: f32) -> usize {
+        let caret = self.layout.caret_bounds(self.caret_display());
+        let goal = *self.goal_x.get_or_insert(caret.origin.x);
+        let y = caret.center().y + lines * caret.height();
+        if y < 0.0 {
+            0
+        } else if y > self.layout.size().height {
+            self.editor.text().len()
+        } else {
+            self.display_to_text(self.layout.hit_test(Point::new(goal, y)))
+        }
+    }
+
+    /// Start (`end == false`) or end of the caret's visual line.
+    fn visual_line_edge(&self, end: bool) -> usize {
+        let caret = self.layout.caret_bounds(self.caret_display());
+        let x = if end { 1.0e7 } else { -1.0e7 };
+        self.display_to_text(self.layout.hit_test(Point::new(x, caret.center().y)))
     }
 
     fn line_height(&self) -> f32 {
@@ -153,6 +207,11 @@ impl InputState {
 
     /// Text offset under an element-local point.
     fn offset_at(&self, local: Point) -> usize {
+        if self.multiline {
+            let x = local.x - self.text_origin.x;
+            let y = (local.y - self.text_origin.y + self.scroll_y).max(0.0);
+            return self.display_to_text(self.layout.hit_test(Point::new(x, y)));
+        }
         let x = local.x - self.text_origin.x + self.scroll_x;
         let y = self.line_height() / 2.0;
         self.display_to_text(self.layout.hit_test(Point::new(x.max(0.0), y)))
@@ -162,8 +221,20 @@ impl InputState {
         self.layout.caret_bounds(self.caret_display()).origin.x
     }
 
-    /// Scrolls so the caret stays inside the visible width.
+    /// Scrolls so the caret stays inside the visible width (or height).
     fn reveal_caret(&mut self) {
+        if self.multiline {
+            let caret = self.layout.caret_bounds(self.caret_display());
+            let view = self.view_height.max(1.0);
+            if caret.bottom() - self.scroll_y > view {
+                self.scroll_y = caret.bottom() - view;
+            }
+            if caret.top() < self.scroll_y {
+                self.scroll_y = caret.top();
+            }
+            self.clamp_scroll();
+            return;
+        }
         let width = self.content_width.max(1.0);
         let text_width = self.layout.size().width + 1.0;
         let caret = self.caret_x();
@@ -174,6 +245,11 @@ impl InputState {
             self.scroll_x = caret;
         }
         self.scroll_x = self.scroll_x.clamp(0.0, (text_width - width).max(0.0));
+    }
+
+    fn clamp_scroll(&mut self) {
+        let max = (self.text_height() - self.view_height).max(0.0);
+        self.scroll_y = self.scroll_y.clamp(0.0, max);
     }
 
     fn reset_blink(&mut self, now: Instant) {
@@ -237,6 +313,13 @@ pub fn text_input(value: Signal<String>) -> TextInput {
         blink_epoch: Instant::now(),
         was_focused: false,
         drag: DragUnit::Grapheme,
+        multiline: false,
+        rows: (1, 1),
+        scroll_y: 0.0,
+        view_height: 0.0,
+        wrap_width: None,
+        measured_height: 0.0,
+        goal_x: None,
     }));
     let drag_state = state.clone();
     let ring = BoxShadow::new(0.0, 0.0, t.accent.with_alpha(0.4)).spread(3.0);
@@ -289,7 +372,27 @@ impl TextInput {
         self
     }
 
-    /// Called with the current text when Enter is pressed.
+    /// Minimum visible rows of a [`text_area`] (default 3).
+    pub fn rows(self, rows: usize) -> Self {
+        {
+            let mut st = self.state.borrow_mut();
+            st.rows.0 = rows.max(1);
+            st.rows.1 = st.rows.1.max(st.rows.0);
+        }
+        self
+    }
+
+    /// Rows a [`text_area`] grows to before it scrolls (default 10).
+    pub fn max_rows(self, rows: usize) -> Self {
+        {
+            let mut st = self.state.borrow_mut();
+            st.rows.1 = rows.max(st.rows.0);
+        }
+        self
+    }
+
+    /// Called with the current text when Enter (Ctrl/Cmd+Enter in a
+    /// [`text_area`]) is pressed.
     pub fn on_submit(mut self, f: impl Fn(&str, &mut EventCx) + 'static) -> Self {
         self.on_submit = Some(Rc::new(f));
         self
@@ -316,6 +419,46 @@ impl TextInput {
         let shortcut = m.secondary() && !m.alt;
         let mut st = self.state.borrow_mut();
         let masked = st.masked;
+        if st.multiline {
+            st.sync_layout(cx.text_system());
+            let vertical = match &e.keystroke.key {
+                Key::Named(NamedKey::ArrowUp) => Some(-1.0),
+                Key::Named(NamedKey::ArrowDown) => Some(1.0),
+                Key::Named(NamedKey::PageUp) | Key::Named(NamedKey::PageDown) => {
+                    let page = (st.view_height / st.line_height()).floor().max(1.0);
+                    Some(if e.keystroke.key == Key::Named(NamedKey::PageUp) {
+                        -page
+                    } else {
+                        page
+                    })
+                }
+                _ => None,
+            };
+            if let Some(lines) = vertical {
+                let target = st.vertical_target(lines);
+                let goal = st.goal_x;
+                st.editor.move_to(target, shift);
+                st.goal_x = goal;
+                return (true, false);
+            }
+            st.goal_x = None;
+            match &e.keystroke.key {
+                Key::Named(NamedKey::Home) if !word => {
+                    let target = st.visual_line_edge(false);
+                    st.editor.move_to(target, shift);
+                    return (true, false);
+                }
+                Key::Named(NamedKey::End) if !word => {
+                    let target = st.visual_line_edge(true);
+                    st.editor.move_to(target, shift);
+                    return (true, false);
+                }
+                Key::Named(NamedKey::Enter) if !m.secondary() => {
+                    return (true, st.editor.insert("\n"));
+                }
+                _ => {}
+            }
+        }
         let ed = &mut st.editor;
         let changed = match &e.keystroke.key {
             Key::Named(NamedKey::ArrowLeft) => {
@@ -412,17 +555,36 @@ impl Element for TextInput {
     }
 
     fn text_style_changed(&mut self, _cx: &mut MeasureCx, style: &TextStyle) -> bool {
-        let mut style = style.clone();
-        style.wrap = TextWrap::None;
-        style.align = TextAlign::Left;
         let mut st = self.state.borrow_mut();
+        let mut style = style.clone();
+        style.wrap = if st.multiline {
+            TextWrap::Word
+        } else {
+            TextWrap::None
+        };
+        style.align = TextAlign::Left;
         let changed = st.style.as_ref().is_none_or(|s| !s.same_layout(&style));
         st.style = Some(style);
         changed
     }
 
-    fn measure(&mut self, _cx: &mut MeasureCx, input: MeasureInput) -> Size {
-        let height = self.state.borrow().line_height();
+    fn measure(&mut self, cx: &mut MeasureCx, input: MeasureInput) -> Size {
+        let mut st = self.state.borrow_mut();
+        if st.multiline {
+            let width = input
+                .known_width
+                .or(input.available_width.definite())
+                .unwrap_or(DEFAULT_WIDTH);
+            st.wrap_width = Some(width);
+            st.sync_layout(cx.text);
+            st.measured_height = st.text_height();
+            let height = st.area_height();
+            return Size::new(
+                input.known_width.unwrap_or(width),
+                input.known_height.unwrap_or(height),
+            );
+        }
+        let height = st.line_height();
         Size::new(
             input.known_width.unwrap_or(DEFAULT_WIDTH),
             input.known_height.unwrap_or(height),
@@ -443,20 +605,37 @@ impl Element for TextInput {
             st.preedit = None;
         }
         st.was_focused = focused;
+        if st.multiline {
+            st.wrap_width = Some(content.width());
+        }
         st.sync_layout(cx.text_system());
-        let line_height = st.line_height();
-        let text_top = content.origin.y + ((content.height() - line_height) / 2.0).max(0.0);
-        st.text_origin = Point::new(content.origin.x, text_top) - bounds.origin;
         st.content_width = content.width();
-        st.reveal_caret();
-        let origin = Point::new(content.origin.x - st.scroll_x, text_top);
+        st.view_height = content.height();
+        let (origin, clip) = if st.multiline {
+            st.text_origin = content.origin - bounds.origin;
+            st.reveal_caret();
+            (
+                Point::new(content.origin.x, content.origin.y - st.scroll_y),
+                Bounds::new(
+                    Point::new(content.origin.x - 1.0, content.origin.y),
+                    Size::new(content.width() + 2.0, content.height()),
+                ),
+            )
+        } else {
+            let line_height = st.line_height();
+            let text_top = content.origin.y + ((content.height() - line_height) / 2.0).max(0.0);
+            st.text_origin = Point::new(content.origin.x, text_top) - bounds.origin;
+            st.reveal_caret();
+            // Leave room for the caret at the right edge.
+            (
+                Point::new(content.origin.x - st.scroll_x, text_top),
+                Bounds::new(
+                    Point::new(content.origin.x - 1.0, bounds.origin.y),
+                    Size::new(content.width() + 2.0, bounds.height()),
+                ),
+            )
+        };
         let palette = st.palette;
-
-        // Leave room for the caret at the right edge.
-        let clip = Bounds::new(
-            Point::new(content.origin.x - 1.0, bounds.origin.y),
-            Size::new(content.width() + 2.0, bounds.height()),
-        );
         cx.with_clip(clip, kova_native_core::Corners::ZERO, |cx| {
             let ed = &st.editor;
             if focused && ed.has_selection() {
@@ -533,6 +712,22 @@ impl Element for TextInput {
                 cx.stop_propagation();
                 changed
             }
+            InputEvent::ScrollWheel(wheel) => {
+                let mut st = self.state.borrow_mut();
+                if !st.multiline || st.text_height() <= st.view_height {
+                    return;
+                }
+                let before = st.scroll_y;
+                let delta = wheel.delta.pixels(st.line_height() * 3.0);
+                st.scroll_y -= delta.y;
+                st.clamp_scroll();
+                if st.scroll_y != before {
+                    cx.prevent_default();
+                    cx.stop_propagation();
+                    cx.repaint();
+                }
+                return;
+            }
             InputEvent::TextInput(text) => self.state.borrow_mut().editor.insert(text),
             InputEvent::Ime(ime) => {
                 let mut st = self.state.borrow_mut();
@@ -559,6 +754,14 @@ impl Element for TextInput {
         cx.repaint();
         if changed {
             self.publish();
+            let mut st = self.state.borrow_mut();
+            if st.multiline {
+                st.sync_layout(cx.text_system());
+                if st.text_height() != st.measured_height {
+                    // The area may grow or shrink with its content.
+                    cx.relayout();
+                }
+            }
         }
     }
 
@@ -577,6 +780,31 @@ impl Element for TextInput {
 }
 
 crate::impl_element_builder!(TextInput);
+
+/// A multi-line text field bound to a `Signal<String>`.
+///
+/// Wraps words to its width and grows from [`TextInput::rows`] (3) to
+/// [`TextInput::max_rows`] (10) lines, then scrolls. Enter inserts a line
+/// break; Ctrl+Enter (Cmd+Enter on macOS) runs [`TextInput::on_submit`].
+/// ↑/↓ keep the caret's column, Home/End go to the visual line's edges and
+/// Ctrl+Home/End to the start/end of the text. Everything else (selection,
+/// clipboard, undo, IME) works as in [`text_input`].
+///
+/// ```ignore
+/// text_area(notes).placeholder("Release notes…").rows(4).max_rows(12)
+/// ```
+pub fn text_area(value: Signal<String>) -> TextInput {
+    let input = text_input(value);
+    {
+        let mut st = input.state.borrow_mut();
+        st.multiline = true;
+        st.rows = (3, 10);
+        st.editor.set_multiline(true);
+        st.editor.set_text(&value.get_untracked());
+        st.editor.move_end(false);
+    }
+    input.py(8.0).w_full()
+}
 
 #[cfg(test)]
 mod tests;

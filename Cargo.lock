@@ -88,7 +88,7 @@ dependencies = [
 
 [[package]]
 name = "animation"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "kova-native",
 ]
@@ -252,7 +252,7 @@ checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
 name = "buttons"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "kova-native",
 ]
@@ -869,7 +869,7 @@ dependencies = [
 
 [[package]]
 name = "hello_window"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "kova-native",
 ]
@@ -1046,7 +1046,7 @@ dependencies = [
 
 [[package]]
 name = "kova-native"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "env_logger",
  "gif",
@@ -1065,14 +1065,14 @@ dependencies = [
 
 [[package]]
 name = "kova-native-animation"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "kova-native-core",
 ]
 
 [[package]]
 name = "kova-native-assets"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "image",
  "kova-native-core",
@@ -1084,7 +1084,7 @@ dependencies = [
 
 [[package]]
 name = "kova-native-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "log",
  "rustc-hash 2.1.3",
@@ -1094,7 +1094,7 @@ dependencies = [
 
 [[package]]
 name = "kova-native-input"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "kova-native-core",
  "smallvec",
@@ -1102,7 +1102,7 @@ dependencies = [
 
 [[package]]
 name = "kova-native-layout"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "kova-native-core",
  "taffy",
@@ -1110,7 +1110,7 @@ dependencies = [
 
 [[package]]
 name = "kova-native-platform"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "arboard",
  "kova-native-core",
@@ -1121,7 +1121,7 @@ dependencies = [
 
 [[package]]
 name = "kova-native-render"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "bytemuck",
  "etagere",
@@ -1135,7 +1135,7 @@ dependencies = [
 
 [[package]]
 name = "kova-native-text"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "cosmic-text",
  "kova-native-core",
@@ -1145,7 +1145,7 @@ dependencies = [
 
 [[package]]
 name = "kova-native-widgets"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "kova-native-animation",
  "kova-native-assets",
@@ -1175,7 +1175,7 @@ dependencies = [
 
 [[package]]
 name = "layout"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "kova-native",
 ]
@@ -1727,7 +1727,7 @@ dependencies = [
 
 [[package]]
 name = "overlays"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "kova-native",
 ]
@@ -2233,7 +2233,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "showcase"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "image",
  "kova-native",

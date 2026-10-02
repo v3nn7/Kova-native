@@ -10,7 +10,7 @@ use kova_native_layout::relative;
 use kova_native_text::FontWeight;
 use std::rc::Rc;
 
-pub use crate::text_input::{TextInput, text_input};
+pub use crate::text_input::{TextInput, text_area, text_input};
 
 mod content;
 mod data;
