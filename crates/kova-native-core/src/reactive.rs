@@ -300,8 +300,12 @@ impl Runtime {
 /// reactive runtime and is dropped when the owning scope is disposed.
 pub struct Signal<T: 'static> {
     key: SignalKey,
-    _marker: PhantomData<(fn() -> T, *const ())>,
+    _marker: UiThreadOnly<T>,
 }
+
+/// Covariant in `T`, but neither `Send` nor `Sync`: signals live in the
+/// UI thread's runtime.
+type UiThreadOnly<T> = PhantomData<(fn() -> T, *const ())>;
 
 impl<T> Clone for Signal<T> {
     fn clone(&self) -> Self {

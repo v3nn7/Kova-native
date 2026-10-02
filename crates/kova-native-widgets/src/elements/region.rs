@@ -165,3 +165,112 @@ pub fn view<V: View>(state: V) -> Region {
         vec![element]
     })
 }
+
+/// Produces the children of a [`Keyed`] list. See [`keyed`].
+pub trait KeyedSource: 'static {
+    /// Reads the current items (signals read here are tracked) and returns
+    /// one key per item, in display order.
+    fn keys(&mut self) -> Vec<u64>;
+    /// Builds the element for a key returned by the latest [`KeyedSource::keys`]
+    /// call. Called once per key while that key stays in the list.
+    fn build(&mut self, key: u64) -> AnyElement;
+}
+
+/// A list that reconciles its children by key. See [`keyed`].
+pub struct Keyed {
+    base: ElementBase,
+    source: Box<dyn KeyedSource>,
+}
+
+impl Element for Keyed {
+    fn base(&self) -> &ElementBase {
+        &self.base
+    }
+
+    fn base_mut(&mut self) -> &mut ElementBase {
+        &mut self.base
+    }
+
+    fn name(&self) -> &'static str {
+        "keyed"
+    }
+
+    fn keyed(&mut self) -> Option<&mut dyn KeyedSource> {
+        Some(&mut *self.source)
+    }
+}
+
+crate::impl_element_builder!(Keyed);
+
+struct TypedSource<T, K, R> {
+    items: Box<dyn Fn() -> Vec<T>>,
+    key: Box<dyn Fn(&T) -> K>,
+    render: R,
+    pending: rustc_hash::FxHashMap<u64, T>,
+}
+
+impl<T, K, E, R> KeyedSource for TypedSource<T, K, R>
+where
+    T: 'static,
+    K: std::hash::Hash + 'static,
+    E: IntoElement,
+    R: FnMut(T) -> E + 'static,
+{
+    fn keys(&mut self) -> Vec<u64> {
+        use std::hash::{BuildHasher, BuildHasherDefault};
+        let hasher = BuildHasherDefault::<rustc_hash::FxHasher>::default();
+        self.pending.clear();
+        let mut keys = Vec::new();
+        for item in (self.items)() {
+            let key = hasher.hash_one((self.key)(&item));
+            // Duplicate keys keep their first item.
+            if let std::collections::hash_map::Entry::Vacant(slot) = self.pending.entry(key) {
+                slot.insert(item);
+                keys.push(key);
+            }
+        }
+        keys
+    }
+
+    fn build(&mut self, key: u64) -> AnyElement {
+        match self.pending.remove(&key) {
+            Some(item) => (self.render)(item).into_any(),
+            None => crate::elements::empty().into_any(),
+        }
+    }
+}
+
+/// A reactive list that keeps one retained subtree per key.
+///
+/// `items` is re-read when the signals it reads change. Items whose key is
+/// already present keep their nodes, state, focus, scroll position and
+/// running transitions; they are only moved. New keys are rendered with
+/// `render`; removed keys are unmounted and their reactive state disposed.
+/// `render` runs once per key, so per-item changes should flow through
+/// signals inside the item (or change the key).
+///
+/// ```ignore
+/// keyed(move || todos.get(), |t| t.id, |t| row().child(text(t.title)))
+/// ```
+pub fn keyed<T, K, E>(
+    items: impl Fn() -> Vec<T> + 'static,
+    key: impl Fn(&T) -> K + 'static,
+    render: impl FnMut(T) -> E + 'static,
+) -> Keyed
+where
+    T: 'static,
+    K: std::hash::Hash + 'static,
+    E: IntoElement,
+{
+    use crate::style::Styled;
+    Keyed {
+        base: ElementBase::new(),
+        source: Box::new(TypedSource {
+            items: Box::new(items),
+            key: Box::new(key),
+            render,
+            pending: Default::default(),
+        }),
+    }
+    .flex_col()
+}

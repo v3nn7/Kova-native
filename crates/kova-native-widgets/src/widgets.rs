@@ -78,10 +78,12 @@ fn variant_styles(t: &Theme, variant: ButtonVariant) -> (Style, StyleFn, StyleFn
     } else {
         fg
     };
-    let mut base = Style::default();
-    base.background = Some(bg.into());
+    let mut base = Style {
+        background: Some(bg.into()),
+        border_color: border,
+        ..Default::default()
+    };
     base.text.color = Some(fg);
-    base.border_color = border;
     let hover: StyleFn = Rc::new(move |s: Style| s.bg(hover).text_color(text_hover));
     let active: StyleFn = Rc::new(move |s: Style| s.bg(active).scale(0.97));
     (base, hover, active)

@@ -28,6 +28,7 @@ pub struct TextSystem {
     pub(crate) fonts: FontSystem,
     swash: SwashCache,
     ui_family: String,
+    mono_family: String,
 }
 
 impl Default for TextSystem {
@@ -75,6 +76,25 @@ impl TextSystem {
         if ui_family != "sans-serif" {
             fonts.db_mut().set_sans_serif_family(ui_family.clone());
         }
+        let mono_candidates: &[&str] = if cfg!(target_os = "windows") {
+            &["Cascadia Mono", "Consolas", "Courier New"]
+        } else if cfg!(target_os = "macos") {
+            &["SF Mono", "Menlo", "Monaco", "Courier"]
+        } else {
+            &[
+                "JetBrains Mono",
+                "DejaVu Sans Mono",
+                "Ubuntu Mono",
+                "Noto Sans Mono",
+                "Liberation Mono",
+            ]
+        };
+        let mono_family = mono_candidates
+            .iter()
+            .find(|name| Self::db_has_family(&fonts, name))
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| ui_family.clone());
+        fonts.db_mut().set_monospace_family(mono_family.clone());
         log::debug!(
             "kova-native-text: {} font faces, UI family '{ui_family}'",
             fonts.db().len()
@@ -83,6 +103,7 @@ impl TextSystem {
             fonts,
             swash: SwashCache::new(),
             ui_family,
+            mono_family,
         }
     }
 
@@ -97,6 +118,21 @@ impl TextSystem {
     /// The family used when a style does not specify one.
     pub fn ui_family(&self) -> &str {
         &self.ui_family
+    }
+
+    /// The platform monospace family, used for the generic
+    /// [`MONOSPACE`](crate::MONOSPACE) family name.
+    pub fn mono_family(&self) -> &str {
+        &self.mono_family
+    }
+
+    /// Resolves generic family names (`"monospace"`) to installed families.
+    pub fn resolve_family<'a>(&'a self, family: Option<&'a str>) -> &'a str {
+        match family {
+            None => &self.ui_family,
+            Some(f) if f.eq_ignore_ascii_case(crate::MONOSPACE) => &self.mono_family,
+            Some(f) => f,
+        }
     }
 
     /// Overrides the default UI family.
@@ -132,14 +168,16 @@ impl TextSystem {
                 // Collapse RGB coverage to grayscale coverage.
                 let data = image
                     .data
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .map(|px| ((px[0] as u16 + px[1] as u16 + px[2] as u16) / 3) as u8)
                     .collect();
                 (false, data)
             }
             SwashContent::Color => {
                 let mut data = image.data;
-                for px in data.chunks_exact_mut(4) {
+                for px in data.as_chunks_mut::<4>().0 {
                     let a = px[3] as u16;
                     px[0] = ((px[0] as u16 * a + 127) / 255) as u8;
                     px[1] = ((px[1] as u16 * a + 127) / 255) as u8;

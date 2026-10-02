@@ -137,6 +137,10 @@ impl Element for Text {
         "text"
     }
 
+    fn text_content(&self) -> Option<&str> {
+        Some(&self.current)
+    }
+
     fn is_measured(&self) -> bool {
         true
     }

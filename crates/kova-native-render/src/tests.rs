@@ -201,7 +201,7 @@ fn renders_glyphs_from_atlas() {
         });
         assert_eq!(drawn, 4);
         let px = renderer.render_to_rgba(gpu, &scene, 120, 50, Color::BLACK);
-        let lit = px.chunks_exact(4).filter(|p| p[0] > 128).count();
+        let lit = px.as_chunks::<4>().0.iter().filter(|p| p[0] > 128).count();
         assert!(lit > 100, "text pixels: {lit}");
     });
 }

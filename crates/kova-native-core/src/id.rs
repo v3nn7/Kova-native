@@ -43,29 +43,30 @@ impl From<SharedString> for ElementId {
     }
 }
 
-impl From<u64> for ElementId {
-    fn from(v: u64) -> Self {
-        ElementId::Integer(v)
-    }
+macro_rules! integer_ids {
+    ($($t:ty),*) => {$(
+        impl From<$t> for ElementId {
+            fn from(v: $t) -> Self {
+                ElementId::Integer(v as u64)
+            }
+        }
+
+        impl From<(&'static str, $t)> for ElementId {
+            fn from((s, i): (&'static str, $t)) -> Self {
+                ElementId::NamedInteger(s.into(), i as u64)
+            }
+        }
+
+        impl From<(SharedString, $t)> for ElementId {
+            fn from((s, i): (SharedString, $t)) -> Self {
+                ElementId::NamedInteger(s, i as u64)
+            }
+        }
+    )*};
 }
 
-impl From<usize> for ElementId {
-    fn from(v: usize) -> Self {
-        ElementId::Integer(v as u64)
-    }
-}
-
-impl From<i32> for ElementId {
-    fn from(v: i32) -> Self {
-        ElementId::Integer(v as u64)
-    }
-}
-
-impl From<(&'static str, usize)> for ElementId {
-    fn from((s, i): (&'static str, usize)) -> Self {
-        ElementId::NamedInteger(s.into(), i as u64)
-    }
-}
+// Negative integers wrap; ids only need to be distinct and stable.
+integer_ids!(u8, u16, u32, u64, usize, i32, i64);
 
 /// Defines a process-unique id newtype backed by an atomic counter.
 #[macro_export]

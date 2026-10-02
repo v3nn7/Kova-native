@@ -87,6 +87,35 @@ pub(crate) struct Node {
     pub wants_hitbox: bool,
     pub queued: bool,
     pub painted: bool,
+    /// Whether the element is a reactive region (transparent for anchoring).
+    pub is_region: bool,
+    /// Children of a portal, mounted under the overlay layer.
+    pub portal_children: Vec<NodeId>,
+    /// Positioning of a portal child relative to its anchor.
+    pub anchor: Option<AnchorState>,
+    /// Direct child of a portal: blocks the pointer like an opaque layer.
+    pub overlay_root: bool,
+    /// For focus traps: the node focused when the trap was mounted.
+    pub restore_focus: Option<NodeId>,
+    /// Keyed lists: current key of each child, in order.
+    pub keyed_children: Vec<(u64, NodeId)>,
+    /// Owner of a keyed list item's reactive state (disposed on removal).
+    pub item_owner: Option<Owner>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum AnchorTarget {
+    Node(NodeId),
+    Id(ElementId),
+    Point(Point),
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct AnchorState {
+    target: AnchorTarget,
+    placement: crate::elements::Placement,
+    gap: f32,
+    match_width: bool,
 }
 
 #[derive(Default)]
@@ -173,6 +202,10 @@ pub struct DispatchResult {
 pub struct ElementTree {
     pub(crate) nodes: SlotMap<NodeId, Node>,
     root: NodeId,
+    /// Layer painted above `root`; parent of all portal children.
+    overlay: NodeId,
+    /// Nodes with `on_click_outside` handlers.
+    outside_listeners: FxHashSet<NodeId>,
     root_owner: Owner,
     layout: LayoutEngine<NodeId>,
     queue: Rc<RefCell<DirtyQueue>>,
@@ -211,6 +244,8 @@ impl ElementTree {
         let mut tree = ElementTree {
             nodes: SlotMap::with_key(),
             root: NodeId::default(),
+            overlay: NodeId::default(),
+            outside_listeners: FxHashSet::default(),
             root_owner,
             layout: LayoutEngine::new(),
             queue: Rc::new(RefCell::new(DirtyQueue::default())),
@@ -236,6 +271,11 @@ impl ElementTree {
             now: Instant::now(),
             stats: FrameStats::default(),
         };
+        // The overlay host exists before the root mounts its first portal.
+        let overlay = crate::elements::div().with_style(|s| {
+            s.layout.position = kova_native_layout::Position::Relative;
+        });
+        tree.overlay = tree.mount(AnyElement::new(overlay), None);
         let mut build = build;
         let root = crate::elements::Region::new(move || vec![build()]).with_style(|s| {
             // A 1x1 grid stretches the user's root element over the
@@ -259,6 +299,11 @@ impl ElementTree {
         self.root
     }
 
+    /// The overlay layer: painted above the root, parent of portal children.
+    pub fn overlay_root(&self) -> NodeId {
+        self.overlay
+    }
+
     pub fn node_count(&self) -> usize {
         self.nodes.len()
     }
@@ -268,14 +313,17 @@ impl ElementTree {
         if self.viewport != size || self.scale != scale {
             self.viewport = size;
             self.scale = scale;
-            if let Some(root) = self.nodes.get(self.root) {
-                let mut style = root.resolved.layout.clone();
-                style.size = kova_native_layout::Axes {
-                    width: size.width.into(),
-                    height: size.height.into(),
-                };
-                self.layout.set_style(root.layout_id, &style);
+            for top in [self.root, self.overlay] {
+                if let Some(node) = self.nodes.get(top) {
+                    let mut style = node.resolved.layout.clone();
+                    style.size = kova_native_layout::Axes {
+                        width: size.width.into(),
+                        height: size.height.into(),
+                    };
+                    self.layout.set_style(node.layout_id, &style);
+                }
             }
+            crate::responsive::set_viewport_size(size);
             self.needs_layout = true;
             self.needs_paint = true;
         }
@@ -298,6 +346,17 @@ impl ElementTree {
             || !self.queue.borrow().nodes.is_empty()
             || !self.animated_nodes.is_empty()
             || !self.commands.is_empty()
+            || kova_native_core::task::has_ready()
+    }
+
+    /// When the tree must produce a frame even without new invalidation:
+    /// the earliest timed repaint or UI timer. Native windows wake then.
+    pub fn next_deadline(&self) -> Option<Instant> {
+        let timer = kova_native_core::timer::next_deadline();
+        match (self.next_wake, timer) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        }
     }
 
     pub fn take_window_commands(&mut self) -> Vec<WindowCommand> {
@@ -344,6 +403,10 @@ impl ElementTree {
     pub fn debug_dump(&self) -> String {
         let mut out = String::new();
         self.dump_node(self.root, 0, &mut out);
+        if !self.nodes[self.overlay].children.is_empty() {
+            out.push_str("overlay:\n");
+            self.dump_node(self.overlay, 1, &mut out);
+        }
         out
     }
 
@@ -374,6 +437,15 @@ impl ElementTree {
     // ---- mounting -----------------------------------------------------------
 
     fn mount(&mut self, element: AnyElement, parent: Option<NodeId>) -> NodeId {
+        self.mount_inner(element, parent, None)
+    }
+
+    fn mount_inner(
+        &mut self,
+        element: AnyElement,
+        parent: Option<NodeId>,
+        item_owner: Option<Owner>,
+    ) -> NodeId {
         let mut element = element.0;
         let children = element.take_children();
         let depth = parent
@@ -382,9 +454,14 @@ impl ElementTree {
         let layout_id = self.layout.create(&LayoutStyle::default(), None);
         let has_animations = !element.base().animations.is_empty();
         let reactive = element.base().is_reactive() || element.has_bindings();
-        let region = element.region().is_some();
+        let keyed = element.keyed().is_some();
+        let region = element.region().is_some() || keyed;
         let element_id = element.base().id().cloned();
         let measured = element.is_measured();
+        let portal = element.portal();
+        let autofocus = element.base().autofocus;
+        let trap_focus = element.base().trap_focus;
+        let outside = !element.base().handlers.click_outside.is_empty();
         let id = self.nodes.insert(Node {
             element,
             parent,
@@ -411,7 +488,17 @@ impl ElementTree {
             wants_hitbox: false,
             queued: false,
             painted: false,
+            is_region: region,
+            portal_children: Vec::new(),
+            anchor: None,
+            overlay_root: false,
+            keyed_children: Vec::new(),
+            item_owner,
+            restore_focus: if trap_focus { self.focused } else { None },
         });
+        if outside {
+            self.outside_listeners.insert(id);
+        }
         if measured {
             self.layout.set_context(layout_id, Some(id));
         }
@@ -440,9 +527,49 @@ impl ElementTree {
             }
             self.ids.insert(eid, id);
         }
+        if autofocus {
+            self.commands.push(Command::Focus(id));
+        }
         self.enqueue_style(id);
 
-        if self.nodes[id].element.region().is_some() {
+        if let Some(spec) = portal {
+            let anchor = spec.anchor.map(|anchor| AnchorState {
+                target: match anchor {
+                    crate::elements::Anchor::Parent => {
+                        AnchorTarget::Node(self.visual_ancestor(parent).unwrap_or(self.root))
+                    }
+                    crate::elements::Anchor::Id(eid) => AnchorTarget::Id(eid),
+                    crate::elements::Anchor::Point(p) => AnchorTarget::Point(p),
+                },
+                placement: spec.placement,
+                gap: spec.gap,
+                match_width: spec.match_width,
+            });
+            let mut child_ids = Vec::with_capacity(children.len());
+            for child in children {
+                let child = self.mount(child, Some(id));
+                if let Some(anchor) = &anchor
+                    && anchor.match_width
+                    && let Some(width) = self.anchor_width(anchor)
+                {
+                    // Known from the last frame: lay out at the right width at once.
+                    self.nodes[child]
+                        .element
+                        .base_mut()
+                        .style
+                        .layout
+                        .min_size
+                        .width = kova_native_layout::Length::Px(width);
+                }
+                self.nodes[child].anchor = anchor.clone();
+                self.nodes[child].overlay_root = true;
+                child_ids.push(child);
+            }
+            self.nodes[id].portal_children = child_ids.clone();
+            let mut layer = self.nodes[self.overlay].children.clone();
+            layer.extend(child_ids);
+            self.set_children(self.overlay, layer);
+        } else if region {
             self.rebuild_region(id);
         } else {
             let mut child_ids = Vec::with_capacity(children.len());
@@ -452,6 +579,18 @@ impl ElementTree {
             self.set_children(id, child_ids);
         }
         id
+    }
+
+    /// The nearest node at or above `id` that is not a reactive region.
+    fn visual_ancestor(&self, mut id: Option<NodeId>) -> Option<NodeId> {
+        while let Some(n) = id {
+            let node = self.nodes.get(n)?;
+            if !node.is_region {
+                return Some(n);
+            }
+            id = node.parent;
+        }
+        None
     }
 
     fn make_observer(&self, id: NodeId) -> Observer {
@@ -480,7 +619,7 @@ impl ElementTree {
     fn nearest_owner(&self, mut id: Option<NodeId>) -> Owner {
         while let Some(n) = id {
             let node = &self.nodes[n];
-            if let Some(owner) = node.owner {
+            if let Some(owner) = node.owner.or(node.item_owner) {
                 return owner;
             }
             id = node.parent;
@@ -488,7 +627,18 @@ impl ElementTree {
         self.root_owner
     }
 
+    /// The owner under which a region node creates its own owner.
+    fn region_parent_owner(&self, id: NodeId) -> Owner {
+        self.nodes[id]
+            .item_owner
+            .unwrap_or_else(|| self.nearest_owner(self.nodes[id].parent))
+    }
+
     fn rebuild_region(&mut self, id: NodeId) {
+        if self.nodes[id].element.keyed().is_some() {
+            self.rebuild_keyed(id);
+            return;
+        }
         self.stats.regions_rebuilt += 1;
         let old_children = std::mem::take(&mut self.nodes[id].children);
         for child in old_children {
@@ -497,7 +647,7 @@ impl ElementTree {
         if let Some(owner) = self.nodes[id].owner.take() {
             owner.dispose();
         }
-        let parent_owner = self.nearest_owner(self.nodes[id].parent);
+        let parent_owner = self.region_parent_owner(id);
         let owner = parent_owner.with(Owner::new);
         self.nodes[id].owner = Some(owner);
         let elements = {
@@ -520,14 +670,83 @@ impl ElementTree {
         self.needs_paint = true;
     }
 
+    /// Reconciles a keyed list: kept keys keep their nodes (moved into the
+    /// new order), new keys are mounted, removed keys are unmounted.
+    fn rebuild_keyed(&mut self, id: NodeId) {
+        self.stats.regions_rebuilt += 1;
+        let keys = {
+            let Node {
+                element,
+                region_observer,
+                ..
+            } = &mut self.nodes[id];
+            let source = element.keyed().expect("keyed element");
+            match region_observer {
+                Some(obs) => obs.track(|| source.keys()),
+                None => source.keys(),
+            }
+        };
+        let mut previous: FxHashMap<u64, NodeId> =
+            std::mem::take(&mut self.nodes[id].keyed_children)
+                .into_iter()
+                .collect();
+        let list_owner = self.nearest_owner(Some(id));
+        let mut keyed_children = Vec::with_capacity(keys.len());
+        for key in keys {
+            let child = match previous.remove(&key) {
+                Some(child) if self.nodes.contains_key(child) => child,
+                _ => {
+                    let owner = list_owner.with(Owner::new);
+                    let element = owner.with(|| {
+                        kova_native_core::untrack(|| {
+                            self.nodes[id]
+                                .element
+                                .keyed()
+                                .expect("keyed element")
+                                .build(key)
+                        })
+                    });
+                    self.mount_inner(element, Some(id), Some(owner))
+                }
+            };
+            keyed_children.push((key, child));
+        }
+        for (_, stale) in previous {
+            self.unmount(stale);
+        }
+        let children = keyed_children.iter().map(|(_, c)| *c).collect();
+        self.nodes[id].keyed_children = keyed_children;
+        self.set_children(id, children);
+        self.needs_paint = true;
+    }
+
     fn unmount(&mut self, id: NodeId) {
-        let children = match self.nodes.get_mut(id) {
-            Some(n) => std::mem::take(&mut n.children),
+        let (children, portal_children) = match self.nodes.get_mut(id) {
+            Some(n) => (
+                std::mem::take(&mut n.children),
+                std::mem::take(&mut n.portal_children),
+            ),
             None => return,
         };
         for child in children {
             self.unmount(child);
         }
+        if !portal_children.is_empty() {
+            for child in &portal_children {
+                self.unmount(*child);
+            }
+            if let Some(layer) = self.nodes.get(self.overlay) {
+                let remaining: Vec<NodeId> = layer
+                    .children
+                    .iter()
+                    .copied()
+                    .filter(|c| !portal_children.contains(c))
+                    .collect();
+                self.set_children(self.overlay, remaining);
+                self.needs_paint = true;
+            }
+        }
+        self.outside_listeners.remove(&id);
         let Some(node) = self.nodes.remove(id) else {
             return;
         };
@@ -546,6 +765,13 @@ impl ElementTree {
         if self.focused == Some(id) {
             self.focused = None;
         }
+        if node.element.base().trap_focus
+            && self.focused.is_none()
+            && let Some(previous) = node.restore_focus
+            && self.nodes.contains_key(previous)
+        {
+            self.commands.push(Command::Focus(previous));
+        }
         self.hovered.retain(|n| *n != id);
         if self.drag.as_ref().is_some_and(|d| d.node == id) {
             self.drag = None;
@@ -553,6 +779,9 @@ impl ElementTree {
         self.animated_nodes.remove(&id);
         self.layout.remove(node.layout_id);
         if let Some(owner) = node.owner {
+            owner.dispose();
+        }
+        if let Some(owner) = node.item_owner {
             owner.dispose();
         }
         // Observer and element (with its closures) drop here.
@@ -587,6 +816,9 @@ impl ElementTree {
         self.now = cx.now;
         self.stats = FrameStats::default();
         let mut animating = false;
+        kova_native_core::timer::set_frame_time(cx.now);
+        kova_native_core::timer::run_due(cx.now);
+        kova_native_core::task::run_ready();
 
         self.apply_commands(cx.text, &mut crate::context::MemoryClipboard::default());
         self.flush_reactive();
@@ -618,8 +850,18 @@ impl ElementTree {
             opacity: 1.0,
             text_color: self.root_text_style.color,
         };
+        let overlay_parent = ParentPaint {
+            origin: Point::ZERO,
+            transform: Transform2D::IDENTITY,
+            clip: parent.clip,
+            opacity: 1.0,
+            text_color: self.root_text_style.color,
+        };
         self.paint_node(root, &parent, cx, &mut animating);
+        let overlay = self.overlay;
+        self.paint_node(overlay, &overlay_parent, cx, &mut animating);
         self.needs_paint = false;
+        self.sync_anchor_widths();
 
         // Content may have moved under a stationary pointer.
         if self.stats.layout_ran && self.drag.is_none() {
@@ -635,7 +877,7 @@ impl ElementTree {
             animating,
             cursor: self.cursor,
             ime_area: self.ime_area(),
-            next_frame: self.next_wake,
+            next_frame: self.next_deadline(),
             stats: self.stats,
         }
     }
@@ -760,7 +1002,10 @@ impl ElementTree {
             }
         }
         let node = &mut self.nodes[id];
-        let wants_hitbox = node.element.base().wants_hitbox() && style.pointer_events;
+        // Overlay layers block the pointer even without handlers, so clicks
+        // on a popup's background never reach the content underneath.
+        let wants_hitbox =
+            (node.element.base().wants_hitbox() || node.overlay_root) && style.pointer_events;
 
         // Layout.
         let mut layout_style = style.layout.clone();
@@ -825,7 +1070,13 @@ impl ElementTree {
         self.needs_paint = true;
 
         if text_changed || disabled_changed || relayout {
-            let children = self.nodes[id].children.clone();
+            let node = &self.nodes[id];
+            let children: Vec<NodeId> = node
+                .children
+                .iter()
+                .chain(&node.portal_children)
+                .copied()
+                .collect();
             for c in children {
                 self.enqueue_style(c);
             }
@@ -834,6 +1085,7 @@ impl ElementTree {
 
     fn compute_layout(&mut self, text: &mut TextSystem) {
         let root_layout = self.nodes[self.root].layout_id;
+        let overlay_layout = self.nodes[self.overlay].layout_id;
         let ElementTree {
             layout,
             nodes,
@@ -845,12 +1097,12 @@ impl ElementTree {
             text,
             scale: *scale,
         };
-        layout.compute(root_layout, *viewport, |id, input| {
-            match nodes.get_mut(id) {
+        for top in [root_layout, overlay_layout] {
+            layout.compute(top, *viewport, |id, input| match nodes.get_mut(id) {
                 Some(node) => node.element.measure(&mut mcx, input),
                 None => Size::ZERO,
-            }
-        });
+            });
+        }
         self.needs_layout = false;
     }
 
@@ -863,15 +1115,26 @@ impl ElementTree {
     ) {
         let now = self.now;
         let scale = self.scale;
-        let Some(node) = self.nodes.get_mut(id) else {
+        let Some(layout_id) = self.nodes.get(id).map(|n| n.layout_id) else {
             return;
         };
+        let layout = self.layout.layout(layout_id);
+        let anchored = self.nodes[id]
+            .anchor
+            .as_ref()
+            .map(|anchor| self.anchor_origin(anchor, layout.size));
+        let node = &mut self.nodes[id];
         node.painted = false;
         if node.resolved.layout.display == kova_native_layout::Display::None {
             return;
         }
-        let layout = self.layout.layout(node.layout_id);
-        let bounds = Bounds::new(parent.origin + layout.location, layout.size);
+        let origin = match anchored {
+            // The anchor is not visible this frame: neither is the overlay.
+            Some(None) => return,
+            Some(Some(origin)) => origin,
+            None => parent.origin + layout.location,
+        };
+        let bounds = Bounds::new(origin, layout.size);
         node.bounds = bounds;
         node.layout = layout;
         let visual = node.visual.get(now);
@@ -1080,6 +1343,144 @@ impl ElementTree {
         merge_wake(&mut self.next_wake, pcx.wake_at.take());
     }
 
+    /// Window position for an anchored overlay of `size`, or `None` when
+    /// its anchor element is missing or was not painted.
+    fn anchor_origin(&self, anchor: &AnchorState, size: Size) -> Option<Point> {
+        let rect = match &anchor.target {
+            AnchorTarget::Point(p) => Bounds::new(*p, Size::ZERO),
+            AnchorTarget::Node(n) => self.painted_bounds(*n)?,
+            AnchorTarget::Id(eid) => self.painted_bounds(*self.ids.get(eid)?)?,
+        };
+        Some(crate::elements::place(
+            rect,
+            size,
+            anchor.placement,
+            anchor.gap,
+            self.viewport,
+        ))
+    }
+
+    fn anchor_width(&self, anchor: &AnchorState) -> Option<f32> {
+        let node = match &anchor.target {
+            AnchorTarget::Point(_) => return None,
+            AnchorTarget::Node(n) => *n,
+            AnchorTarget::Id(eid) => *self.ids.get(eid)?,
+        };
+        self.visual_bounds(node).map(|b| b.width())
+    }
+
+    /// Keeps `match_width` overlays as wide as their anchor when it resizes.
+    fn sync_anchor_widths(&mut self) {
+        let overlays = self.nodes[self.overlay].children.clone();
+        for id in overlays {
+            let Some(anchor) = self.nodes[id].anchor.clone() else {
+                continue;
+            };
+            if !anchor.match_width {
+                continue;
+            }
+            let Some(width) = self.anchor_width(&anchor) else {
+                continue;
+            };
+            let want = kova_native_layout::Length::Px(width);
+            let node = &mut self.nodes[id];
+            if node.element.base().style.layout.min_size.width != want {
+                node.element.base_mut().style.layout.min_size.width = want;
+                self.enqueue_style(id);
+            }
+        }
+    }
+
+    fn scroll_into_view(&mut self, eid: &ElementId) {
+        let Some(&target) = self.ids.get(eid) else {
+            return;
+        };
+        let Some(mut want) = self.visual_bounds(target) else {
+            return;
+        };
+        let now = self.now;
+        let mut current = self.nodes[target].parent;
+        while let Some(id) = current {
+            let node = &mut self.nodes[id];
+            current = node.parent;
+            let Some(scroll) = &mut node.scroll else {
+                continue;
+            };
+            let view = node.bounds;
+            let offset = *scroll.offset.target();
+            let mut next = offset;
+            if want.top() < view.top() {
+                next.y -= view.top() - want.top();
+            } else if want.bottom() > view.bottom() {
+                next.y += (want.bottom() - view.bottom()).min(want.top() - view.top());
+            }
+            if want.left() < view.left() {
+                next.x -= view.left() - want.left();
+            } else if want.right() > view.right() {
+                next.x += (want.right() - view.right()).min(want.left() - view.left());
+            }
+            next = Point::new(
+                next.x.clamp(0.0, scroll.max.x),
+                next.y.clamp(0.0, scroll.max.y),
+            );
+            if next != offset {
+                scroll.offset.set(
+                    next,
+                    Transition::new(Duration::from_millis(120)).easing(Easing::EaseOutCubic),
+                    now,
+                );
+                scroll.last_activity = Some(now);
+                self.needs_paint = true;
+                // Outer containers see the target where this one will put it.
+                want = want.translate(offset - next);
+            }
+        }
+    }
+
+    fn painted_bounds(&self, id: NodeId) -> Option<Bounds> {
+        self.visual_bounds(id)
+    }
+
+    /// Window bounds of a node as painted in the last frame (after visual
+    /// transforms), or `None` if it was not painted.
+    pub fn visual_bounds(&self, id: NodeId) -> Option<Bounds> {
+        let node = self.nodes.get(id)?;
+        node.painted
+            .then(|| node.transform.apply_bounds(&node.bounds))
+    }
+
+    /// Nodes painted in the last frame, in paint order (root, then overlay).
+    pub fn painted_nodes(&self) -> Vec<NodeId> {
+        let mut out = Vec::new();
+        let mut stack = vec![self.overlay, self.root];
+        while let Some(id) = stack.pop() {
+            let Some(node) = self.nodes.get(id) else {
+                continue;
+            };
+            if !node.painted {
+                continue;
+            }
+            out.push(id);
+            stack.extend(node.children.iter().rev());
+        }
+        out
+    }
+
+    /// The text shown by a text element.
+    pub fn text_content(&self, id: NodeId) -> Option<&str> {
+        self.nodes.get(id)?.element.text_content()
+    }
+
+    /// The element id of a node, if it has one.
+    pub fn element_id(&self, id: NodeId) -> Option<&ElementId> {
+        self.nodes.get(id)?.element.base().id()
+    }
+
+    /// Forces a full repaint on the next frame (e.g. after switching atlases).
+    pub fn request_repaint(&mut self) {
+        self.needs_paint = true;
+    }
+
     fn ime_area(&self) -> Option<Bounds> {
         let id = self.focused?;
         let node = self.nodes.get(id)?;
@@ -1233,6 +1634,40 @@ impl ElementTree {
         handled
     }
 
+    /// Runs `on_click_outside` handlers of nodes not on the pressed path.
+    fn notify_click_outside(&mut self, path: &[NodeId], env: &mut DispatchContext) {
+        if self.outside_listeners.is_empty() {
+            return;
+        }
+        let mut targets: Vec<NodeId> = self
+            .outside_listeners
+            .iter()
+            .copied()
+            .filter(|id| !path.contains(id) && self.is_interactive(*id))
+            .collect();
+        // Innermost first, deterministic among equals.
+        targets.sort_by_key(|id| (Reverse(self.nodes[*id].depth), *id));
+        let mut commands = std::mem::take(&mut self.commands);
+        for id in targets {
+            let Some(node) = self.nodes.get(id) else {
+                continue;
+            };
+            let list = node.element.base().handlers.click_outside.clone();
+            for handler in list {
+                let mut cx = self.event_cx(
+                    id,
+                    DispatchPhase::Bubble,
+                    &mut commands,
+                    env.clipboard,
+                    env.text,
+                    env.now,
+                );
+                handler(&mut cx);
+            }
+        }
+        self.commands = commands;
+    }
+
     fn call_bool_handlers(
         &mut self,
         id: NodeId,
@@ -1368,9 +1803,14 @@ impl ElementTree {
     }
 
     /// Focusable nodes in tab order.
+    /// Focusable nodes in Tab order. While a focus trap is mounted, only
+    /// nodes inside the most recently painted trap are included.
     fn focus_order(&self) -> Vec<NodeId> {
         let mut out = Vec::new();
-        let mut stack = vec![self.root];
+        let mut trap = None;
+        // Overlay content follows the root, matching paint order.
+        let mut stack = vec![self.overlay, self.root];
+        let mut seen = 0usize;
         while let Some(id) = stack.pop() {
             let Some(node) = self.nodes.get(id) else {
                 continue;
@@ -1378,13 +1818,34 @@ impl ElementTree {
             if node.resolved.layout.display == kova_native_layout::Display::None {
                 continue;
             }
-            if node.element.base().focusable && !node.disabled {
-                out.push((node.element.base().tab_index, out.len(), id));
+            let base = node.element.base();
+            if base.trap_focus {
+                trap = Some(id);
             }
+            if base.focusable && !node.disabled && base.tab_index >= 0 {
+                out.push((base.tab_index, seen, id));
+            }
+            seen += 1;
             stack.extend(node.children.iter().rev());
         }
         out.sort_by_key(|(tab, order, _)| (*tab, *order));
-        out.into_iter().map(|(_, _, id)| id).collect()
+        out.into_iter()
+            .map(|(_, _, id)| id)
+            .filter(|id| trap.is_none_or(|trap| self.is_inside(*id, trap)))
+            .collect()
+    }
+
+    /// Whether `id` is `ancestor` or one of its logical descendants.
+    fn is_inside(&self, mut id: NodeId, ancestor: NodeId) -> bool {
+        loop {
+            if id == ancestor {
+                return true;
+            }
+            match self.nodes.get(id).and_then(|n| n.parent) {
+                Some(parent) => id = parent,
+                None => return false,
+            }
+        }
     }
 
     fn move_focus(&mut self, forward: bool, text: &mut TextSystem, clipboard: &mut dyn Clipboard) {
@@ -1427,6 +1888,7 @@ impl ElementTree {
                     Command::FocusPrev => self.move_focus(false, text, clipboard),
                     Command::Repaint(id) => self.invalidate(id, Dirty::PAINT),
                     Command::Relayout(id) => self.invalidate(id, Dirty::LAYOUT),
+                    Command::ScrollIntoView(eid) => self.scroll_into_view(&eid),
                     Command::DispatchAction(action) => actions.push(action),
                     Command::Window(cmd) => self.window_commands.push(cmd),
                 }
@@ -1457,7 +1919,8 @@ impl ElementTree {
                 .filter(|(t, _)| *t == ty)
                 .map(|(_, h)| h.clone())
                 .collect();
-            for handler in list {
+            // The innermost handler for the action type wins.
+            if let Some(handler) = list.into_iter().next() {
                 let mut cx = self.event_cx(
                     id,
                     DispatchPhase::Bubble,
@@ -1484,6 +1947,7 @@ impl ElementTree {
     /// Dispatches an input event (window coordinates, logical px).
     pub fn dispatch(&mut self, event: &InputEvent, env: &mut DispatchContext) -> DispatchResult {
         self.now = env.now;
+        kova_native_core::timer::set_frame_time(env.now);
         let mut result = DispatchResult::default();
         match event {
             InputEvent::MouseMove(e) => {
@@ -1529,6 +1993,7 @@ impl ElementTree {
                     .hit_test(e.position)
                     .map(|t| self.path_to(t))
                     .unwrap_or_else(|| vec![self.root]);
+                self.notify_click_outside(&path, env);
                 let (_, prevented) =
                     self.dispatch_phases(&path, e, Some(event), |h| h.mouse_down.clone(), env);
                 result.handled = true;
@@ -1854,6 +2319,7 @@ impl ElementTree {
 impl Drop for ElementTree {
     fn drop(&mut self) {
         self.unmount(self.root);
+        self.unmount(self.overlay);
         self.root_owner.dispose();
     }
 }
@@ -1877,9 +2343,7 @@ fn paint_scrollbars(
     let idle = scroll.last_activity.map_or(Duration::from_secs(10), |t| {
         cx.now.saturating_duration_since(t)
     });
-    let fade = if hovered {
-        1.0
-    } else if idle < Duration::from_millis(900) {
+    let fade = if hovered || idle < Duration::from_millis(900) {
         1.0
     } else if idle < Duration::from_millis(1300) {
         cx.request_animation_frame();

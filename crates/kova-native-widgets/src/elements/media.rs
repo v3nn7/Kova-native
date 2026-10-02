@@ -279,8 +279,10 @@ crate::impl_element_builder!(Svg);
 /// signal it reads schedules a repaint when it changes.
 pub struct Canvas {
     base: ElementBase,
-    paint: Rc<dyn Fn(&mut PaintCx, Bounds)>,
+    paint: PaintFn,
 }
+
+type PaintFn = Rc<dyn Fn(&mut PaintCx, Bounds)>;
 
 /// Creates a canvas with a paint callback receiving the content bounds.
 pub fn canvas(paint: impl Fn(&mut PaintCx, Bounds) + 'static) -> Canvas {

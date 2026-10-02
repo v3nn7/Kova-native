@@ -79,7 +79,7 @@ impl ImageData {
 }
 
 fn premultiply(pixels: &mut [u8]) {
-    for px in pixels.chunks_exact_mut(4) {
+    for px in pixels.as_chunks_mut::<4>().0 {
         let a = px[3] as u16;
         if a < 255 {
             px[0] = ((px[0] as u16 * a + 127) / 255) as u8;
@@ -148,7 +148,7 @@ impl SvgData {
     /// monochrome icons tinted at draw time.
     pub fn rasterize_mask(&self, width: u32, height: u32) -> Option<Vec<u8>> {
         let rgba = self.rasterize(width, height)?;
-        Some(rgba.chunks_exact(4).map(|px| px[3]).collect())
+        Some(rgba.as_chunks::<4>().0.iter().map(|px| px[3]).collect())
     }
 }
 

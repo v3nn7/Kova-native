@@ -3,7 +3,8 @@
 //! `kova-native-core` has no knowledge of windows, GPUs or layout. It provides the
 //! vocabulary shared by every other crate: geometry, colors and fills,
 //! identifiers, cheap strings, durations, dirty flags and the fine-grained
-//! reactive runtime that drives invalidation.
+//! reactive runtime that drives invalidation, plus UI-thread timers and
+//! async tasks.
 
 pub mod color;
 pub mod dirty;
@@ -12,7 +13,9 @@ pub mod geometry;
 pub mod id;
 pub mod reactive;
 pub mod shared_string;
+pub mod task;
 pub mod time;
+pub mod timer;
 
 pub use color::{Color, ColorStop, Fill, LinearGradient, hsla, linear_gradient, rgb, rgba};
 pub use dirty::Dirty;

@@ -6,6 +6,8 @@ mod context;
 mod editor;
 mod element;
 pub mod elements;
+pub mod headless;
+pub mod responsive;
 mod style;
 mod text_input;
 mod theme;
@@ -15,6 +17,7 @@ pub mod widgets;
 pub use context::{Clipboard, EventCx, MeasureCx, MemoryClipboard, PaintCx, WindowCommand};
 pub use editor::TextEditor;
 pub use element::{AnyElement, DragEvent, Element, ElementBase, Interactive, IntoElement};
+pub use responsive::{Breakpoint, breakpoint, responsive, viewport_size};
 pub use style::{BoxShadow, Style, Styled, TextRefinement};
 pub use theme::{Theme, set_theme, theme};
 pub use tree::{
@@ -23,3 +26,15 @@ pub use tree::{
 
 #[cfg(test)]
 mod tests;
+
+/// Common element-building vocabulary of this crate (the `kova-native`
+/// facade's prelude re-exports it together with core types).
+pub mod prelude {
+    pub use crate::elements::*;
+    pub use crate::responsive::{Breakpoint, breakpoint, responsive, viewport_size};
+    pub use crate::widgets::*;
+    pub use crate::{BoxShadow, Interactive, IntoElement, Style, Styled, Theme, set_theme, theme};
+}
+
+#[cfg(test)]
+mod overlay_tests;

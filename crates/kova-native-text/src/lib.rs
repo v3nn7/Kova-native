@@ -20,3 +20,7 @@ pub use system::{GlyphKey, RasterizedGlyph, TextSystem};
 
 #[cfg(test)]
 mod tests;
+
+/// Generic family name resolved to the platform monospace font
+/// (Cascadia Mono / Consolas on Windows, SF Mono / Menlo on macOS, ...).
+pub const MONOSPACE: &str = "monospace";

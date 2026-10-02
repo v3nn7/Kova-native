@@ -51,6 +51,7 @@ pub(crate) enum Command {
     FocusPrev,
     Repaint(NodeId),
     Relayout(NodeId),
+    ScrollIntoView(ElementId),
     DispatchAction(Box<dyn Action>),
     Window(WindowCommand),
 }
@@ -126,6 +127,12 @@ impl EventCx<'_> {
 
     pub fn focus_prev(&mut self) {
         self.commands.push(Command::FocusPrev);
+    }
+
+    /// Scrolls the nearest scrolling ancestors of the element with `id` so
+    /// that it becomes fully visible (keyboard navigation in long lists).
+    pub fn scroll_into_view(&mut self, id: impl Into<ElementId>) {
+        self.commands.push(Command::ScrollIntoView(id.into()));
     }
 
     /// Dispatches an action along the focus path after this event.

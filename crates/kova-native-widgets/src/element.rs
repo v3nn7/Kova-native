@@ -61,6 +61,8 @@ pub(crate) struct Handlers {
     pub drag_start: Vec<EventFn<DragEvent>>,
     pub drag: Vec<EventFn<DragEvent>>,
     pub drag_end: Vec<EventFn<DragEvent>>,
+    /// Pointer presses anywhere outside the element's logical subtree.
+    pub click_outside: Vec<ClickFn>,
     pub actions: Vec<(TypeId, ActionFn)>,
 }
 
@@ -96,6 +98,9 @@ pub struct ElementBase {
     pub(crate) handlers: Handlers,
     pub(crate) focusable: bool,
     pub(crate) tab_index: i32,
+    pub(crate) autofocus: bool,
+    pub(crate) trap_focus: bool,
+    pub(crate) block_pointer: bool,
     pub(crate) key_context: Option<&'static str>,
     pub(crate) children: Vec<AnyElement>,
 }
@@ -124,6 +129,7 @@ impl ElementBase {
     /// Whether the node must take part in hit testing.
     pub(crate) fn wants_hitbox(&self) -> bool {
         self.handlers.has_pointer()
+            || self.block_pointer
             || self.has_state_styles()
             || self.focusable
             || self.style.cursor.is_some()
@@ -218,6 +224,25 @@ pub trait Element: 'static {
     /// Called every frame while the element reports it is animating.
     fn is_animating(&self, _now: Instant) -> bool {
         false
+    }
+
+    /// Keyed lists return their child source; the tree reconciles their
+    /// children by key. See [`crate::elements::keyed`].
+    fn keyed(&mut self) -> Option<&mut dyn crate::elements::KeyedSource> {
+        None
+    }
+
+    /// The text this element displays, if it is textual. Used by headless
+    /// drivers and tests to find elements by what the user sees.
+    fn text_content(&self) -> Option<&str> {
+        None
+    }
+
+    /// Portals return how their children are placed in the overlay layer;
+    /// the children are mounted there instead of under this element.
+    /// See [`crate::elements::portal`].
+    fn portal(&self) -> Option<crate::elements::PortalSpec> {
+        None
     }
 }
 
@@ -352,10 +377,38 @@ pub trait Interactive: Sized {
         self
     }
 
+    /// Makes the element focusable and orders it in Tab navigation: lower
+    /// indices first, ties in tree order. A negative index (like HTML's
+    /// `tabindex="-1"`) keeps the element focusable by click and
+    /// programmatically, but skips it during Tab navigation.
     fn tab_index(mut self, index: i32) -> Self {
         let base = self.base_mut();
         base.focusable = true;
         base.tab_index = index;
+        self
+    }
+
+    /// Focuses the element when it is mounted (it is made focusable).
+    fn autofocus(mut self) -> Self {
+        let base = self.base_mut();
+        base.focusable = true;
+        base.autofocus = true;
+        self
+    }
+
+    /// Catches pointer events even without handlers, so presses on this
+    /// element's background never reach elements painted below it (panels
+    /// over a clickable backdrop, cards over a canvas).
+    fn block_pointer(mut self) -> Self {
+        self.base_mut().block_pointer = true;
+        self
+    }
+
+    /// Confines Tab navigation to this element's subtree while it is mounted
+    /// (dialogs, drawers). When the element is removed while nothing is
+    /// focused, focus returns to the element that was focused when it mounted.
+    fn trap_focus(mut self) -> Self {
+        self.base_mut().trap_focus = true;
         self
     }
 
@@ -464,6 +517,15 @@ pub trait Interactive: Sized {
 
     fn on_drag_end(mut self, f: impl Fn(&DragEvent, &mut EventCx) + 'static) -> Self {
         self.base_mut().handlers.drag_end.push(Rc::new(f));
+        self
+    }
+
+    /// Called when a mouse button is pressed outside this element's logical
+    /// subtree. Overlay content mounted through a [`portal`](crate::elements::portal)
+    /// counts as inside the element that declares the portal, so this closes
+    /// menus and popovers without reacting to clicks inside them.
+    fn on_click_outside(mut self, f: impl Fn(&mut EventCx) + 'static) -> Self {
+        self.base_mut().handlers.click_outside.push(Rc::new(f));
         self
     }
 

@@ -115,11 +115,7 @@ impl TextLayout {
             TextWrap::Glyph => cosmic_text::Wrap::Glyph,
             TextWrap::None => cosmic_text::Wrap::None,
         });
-        let family = style
-            .family
-            .as_deref()
-            .unwrap_or(ts.ui_family())
-            .to_string();
+        let family = ts.resolve_family(style.family.as_deref()).to_string();
         let attrs = Attrs::new()
             .family(Family::Name(&family))
             .weight(cosmic_text::Weight(style.weight.0))

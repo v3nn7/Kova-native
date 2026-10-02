@@ -157,7 +157,6 @@ struct NativeWindow {
     clipboard: SystemClipboard,
     occluded: bool,
     animating: bool,
-    next_frame: Option<Instant>,
     redraw_pending: bool,
     retry_at: Option<Instant>,
     shown: bool,
@@ -206,6 +205,9 @@ impl Runner {
         tree.set_viewport(window.logical_size(), window.scale_factor());
         let waker = cx.waker();
         tree.set_waker(move || waker.wake());
+        // Async tasks may be woken from worker threads.
+        let task_waker = cx.waker();
+        kova_native_core::task::set_wake_hook(move || task_waker.wake());
         log::debug!("kova-native: native renderer ready");
         Ok(NativeWindow {
             window,
@@ -218,7 +220,6 @@ impl Runner {
             clipboard: SystemClipboard(kova_native_platform::Clipboard::new()),
             occluded: false,
             animating: false,
-            next_frame: None,
             redraw_pending: false,
             retry_at: None,
             shown: false,
@@ -270,7 +271,6 @@ impl Runner {
         }
         state.gpu.queue.present(frame);
         state.animating = output.animating;
-        state.next_frame = output.next_frame;
         state.window.set_cursor(output.cursor);
         state
             .window
@@ -412,13 +412,14 @@ impl PlatformHandler for Runner {
         if state.occluded || w == 0 || h == 0 || state.redraw_pending {
             return;
         }
-        if let Some(retry) = state.retry_at {
-            if retry > now {
-                cx.wake_at(retry);
-                return;
-            }
+        if let Some(retry) = state.retry_at
+            && retry > now
+        {
+            cx.wake_at(retry);
+            return;
         }
-        let timed = match state.next_frame {
+        // Timers registered by handlers since the last frame count too.
+        let timed = match state.tree.next_deadline() {
             Some(at) if at > now => {
                 cx.wake_at(at);
                 false
