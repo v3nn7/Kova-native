@@ -1,12 +1,13 @@
 //! wgpu device management and scene rendering.
 
 use crate::atlas::{Atlas, AtlasTextures};
-use crate::scene::{Effect, Instance, Scene};
+use crate::scene::{Effect, Instance, Op, Scene};
+use crate::shaders::ShaderId;
 use kova_native_core::{Color, KovaError, KovaResult};
 use rustc_hash::FxHashMap;
 use std::borrow::Cow;
 
-const SHADER: &str = include_str!("shader.wgsl");
+pub(crate) const SHADER: &str = include_str!("shader.wgsl");
 const POST_SHADER: &str = include_str!("post.wgsl");
 /// Format of offscreen targets (intermediate scene texture, blur buffers).
 const OFFSCREEN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
@@ -233,6 +234,15 @@ impl Target {
     }
 }
 
+/// An offscreen layer target with bind groups to draw from it.
+struct LayerTarget {
+    target: Target,
+    /// Scene bind group sampling this layer as `backdrop_texture`.
+    composite_group: wgpu::BindGroup,
+    /// Post bind group sampling this layer (backdrop blur inside layers).
+    post_group: wgpu::BindGroup,
+}
+
 /// Offscreen textures used when a frame contains effects (backdrop blur).
 struct EffectTargets {
     size: (u32, u32),
@@ -289,6 +299,10 @@ pub struct Renderer {
     dummy_backdrop: Target,
     effects: Option<EffectTargets>,
     bind_group: Option<wgpu::BindGroup>,
+    /// Layer targets by nesting depth (all viewport sized).
+    layers: Vec<LayerTarget>,
+    custom_modules: FxHashMap<ShaderId, wgpu::ShaderModule>,
+    custom_pipelines: FxHashMap<(ShaderId, wgpu::TextureFormat), wgpu::RenderPipeline>,
 }
 
 fn is_srgb(format: wgpu::TextureFormat) -> bool {
@@ -446,6 +460,9 @@ impl Renderer {
             dummy_backdrop,
             effects: None,
             bind_group: None,
+            layers: Vec::new(),
+            custom_modules: FxHashMap::default(),
+            custom_pipelines: FxHashMap::default(),
         }
     }
 
@@ -498,52 +515,155 @@ impl Renderer {
         })
     }
 
-    fn pipeline(
-        &mut self,
+    /// Creates an instanced quad pipeline (built-in or custom fragment entry).
+    fn create_scene_pipeline(
         device: &wgpu::Device,
+        layout: &wgpu::PipelineLayout,
+        module: &wgpu::ShaderModule,
+        fragment: &str,
         format: wgpu::TextureFormat,
-    ) -> &wgpu::RenderPipeline {
+    ) -> wgpu::RenderPipeline {
+        const ATTRIBUTES: [wgpu::VertexAttribute; 13] = wgpu::vertex_attr_array![
+            0 => Float32x4, 1 => Float32x4, 2 => Float32x4, 3 => Float32x4,
+            4 => Float32x4, 5 => Float32x4, 6 => Float32x4, 7 => Float32x4,
+            8 => Float32x4, 9 => Unorm8x4, 10 => Unorm8x4, 11 => Unorm8x4,
+            12 => Uint32
+        ];
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("kova-native pipeline"),
+            layout: Some(layout),
+            vertex: wgpu::VertexState {
+                module,
+                entry_point: Some("vs_main"),
+                compilation_options: Default::default(),
+                buffers: &[Some(wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<Instance>() as u64,
+                    step_mode: wgpu::VertexStepMode::Instance,
+                    attributes: &ATTRIBUTES,
+                })],
+            },
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            fragment: Some(wgpu::FragmentState {
+                module,
+                entry_point: Some(fragment),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            multiview_mask: None,
+            cache: None,
+        })
+    }
+
+    fn pipeline(&mut self, device: &wgpu::Device, format: wgpu::TextureFormat) {
         let (shader, layout) = (&self.shader, &self.pipeline_layout);
         self.pipelines.entry(format).or_insert_with(|| {
-            const ATTRIBUTES: [wgpu::VertexAttribute; 13] = wgpu::vertex_attr_array![
-                0 => Float32x4, 1 => Float32x4, 2 => Float32x4, 3 => Float32x4,
-                4 => Float32x4, 5 => Float32x4, 6 => Float32x4, 7 => Float32x4,
-                8 => Float32x4, 9 => Unorm8x4, 10 => Unorm8x4, 11 => Unorm8x4,
-                12 => Uint32
-            ];
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("kova-native pipeline"),
-                layout: Some(layout),
-                vertex: wgpu::VertexState {
-                    module: shader,
-                    entry_point: Some("vs_main"),
-                    compilation_options: Default::default(),
-                    buffers: &[Some(wgpu::VertexBufferLayout {
-                        array_stride: std::mem::size_of::<Instance>() as u64,
-                        step_mode: wgpu::VertexStepMode::Instance,
-                        attributes: &ATTRIBUTES,
-                    })],
-                },
-                primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::TriangleStrip,
-                    ..Default::default()
-                },
-                depth_stencil: None,
-                multisample: wgpu::MultisampleState::default(),
-                fragment: Some(wgpu::FragmentState {
-                    module: shader,
-                    entry_point: Some("fs_main"),
-                    compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format,
-                        blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }),
-                multiview_mask: None,
-                cache: None,
+            Self::create_scene_pipeline(device, layout, shader, "fs_main", format)
+        });
+    }
+
+    /// Compiles the pipeline of a registered custom shader for `format`.
+    fn custom_pipeline(
+        &mut self,
+        device: &wgpu::Device,
+        id: ShaderId,
+        format: wgpu::TextureFormat,
+    ) {
+        if self.custom_pipelines.contains_key(&(id, format)) {
+            return;
+        }
+        let Some((label, source)) = crate::shaders::shader_module_source(id) else {
+            log::error!("kova-native: unknown custom shader {id:?}");
+            return;
+        };
+        let module = self.custom_modules.entry(id).or_insert_with(|| {
+            device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some(&label),
+                source: wgpu::ShaderSource::Wgsl(Cow::Owned(source.to_string())),
             })
-        })
+        });
+        let pipeline =
+            Self::create_scene_pipeline(device, &self.pipeline_layout, module, "fs_custom", format);
+        self.custom_pipelines.insert((id, format), pipeline);
+    }
+
+    /// Makes sure `depth` layer targets of `size` exist with current bind groups.
+    fn ensure_layers(&mut self, device: &wgpu::Device, depth: usize, size: (u32, u32)) {
+        if self.layers.first().is_some_and(|l| {
+            (l.target.texture.width(), l.target.texture.height()) != (size.0.max(1), size.1.max(1))
+        }) {
+            self.layers.clear();
+        }
+        while self.layers.len() < depth {
+            let usage =
+                wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
+            let target = Target::new(device, size.0, size.1, usage, "kova-native layer");
+            let composite_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("kova-native layer composite bind group"),
+                layout: &self.bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: self.globals.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(
+                            &self.atlas_textures.mono.view,
+                        ),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::TextureView(
+                            &self.atlas_textures.color.view,
+                        ),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: wgpu::BindingResource::TextureView(&target.view),
+                    },
+                ],
+            });
+            let post_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("kova-native layer post bind group"),
+                layout: &self.post_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                            buffer: &self.post_params,
+                            offset: 0,
+                            size: wgpu::BufferSize::new(std::mem::size_of::<PostParams>() as u64),
+                        }),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(&target.view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                ],
+            });
+            self.layers.push(LayerTarget {
+                target,
+                composite_group,
+                post_group,
+            });
+        }
     }
 
     fn ensure_effect_targets(&mut self, device: &wgpu::Device, size: (u32, u32)) -> bool {
@@ -664,9 +784,21 @@ impl Renderer {
         let mut rebuild =
             self.atlas_textures.sync(device, queue, &mut self.atlas) || self.bind_group.is_none();
 
-        let segments = scene.segments();
-        let captures = segments.iter().filter(|s| s.effect.is_some()).count() as u64;
-        let use_effects = captures > 0;
+        let ops = scene.ops();
+        let captures = ops.iter().filter(|op| matches!(op, Op::Effect(_))).count() as u64;
+        let mut depth = 0usize;
+        let mut max_depth = 0usize;
+        for op in &ops {
+            match op {
+                Op::PushLayer => {
+                    depth += 1;
+                    max_depth = max_depth.max(depth);
+                }
+                Op::PopLayer { .. } => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+        }
+        let use_effects = captures > 0 || max_depth > 0;
         if use_effects {
             self.ensure_post_capacity(device, captures * 3 + 1);
             rebuild |= self.ensure_effect_targets(device, size);
@@ -674,6 +806,11 @@ impl Renderer {
         }
         if rebuild {
             self.rebuild_bind_group(device);
+            // Layer bind groups reference the atlas and parameter buffers too.
+            self.layers.clear();
+        }
+        if max_depth > 0 {
+            self.ensure_layers(device, max_depth, size);
         }
 
         // Upload instances.
@@ -726,71 +863,123 @@ impl Renderer {
         };
 
         self.pipeline(device, draw_format);
+        for op in &ops {
+            if let Op::Draw {
+                shader: Some(id), ..
+            } = op
+            {
+                self.custom_pipeline(device, *id, draw_format);
+            }
+        }
         let pipeline = &self.pipelines[&draw_format];
         let bind_group = self.bind_group.as_ref().expect("bind group");
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("kova-native frame"),
         });
-        let draw_target = match (&self.effects, use_effects) {
+        let root = match (&self.effects, use_effects) {
             (Some(e), true) => &e.scene.view,
             _ => target,
         };
+        let layers = &self.layers;
+        let view_at = |depth: usize| {
+            if depth == 0 {
+                root
+            } else {
+                &layers[depth - 1].target.view
+            }
+        };
+        let clear_at = |depth: usize| {
+            if depth == 0 {
+                clear_color
+            } else {
+                wgpu::Color::TRANSPARENT
+            }
+        };
+        let begin = begin_pass;
 
         let mut post_slot = 0u64;
         let mut post_writes: Vec<(u64, PostParams)> = Vec::new();
-        let mut first = true;
-        let passes = if segments.is_empty() {
-            1
-        } else {
-            segments.len()
-        };
-        for i in 0..passes {
-            let segment = segments.get(i);
-            {
-                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("kova-native scene pass"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: draw_target,
-                        depth_slice: None,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: if first {
-                                wgpu::LoadOp::Clear(clear_color)
-                            } else {
-                                wgpu::LoadOp::Load
-                            },
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: None,
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                    multiview_mask: None,
-                });
-                if let Some(seg) = segment
-                    && !seg.instances.is_empty()
-                {
-                    pass.set_pipeline(pipeline);
-                    pass.set_bind_group(0, bind_group, &[]);
-                    pass.set_vertex_buffer(0, self.instances.slice(..));
-                    pass.draw(0..4, seg.instances.clone());
+        // `fresh[d]`: target at depth `d` has not been cleared this frame.
+        let mut fresh = vec![true];
+        for op in &ops {
+            let depth = fresh.len() - 1;
+            match op {
+                Op::Draw { instances, shader } => {
+                    let load = if fresh[depth] {
+                        wgpu::LoadOp::Clear(clear_at(depth))
+                    } else {
+                        wgpu::LoadOp::Load
+                    };
+                    fresh[depth] = false;
+                    let pipeline = match shader {
+                        None => Some(pipeline),
+                        Some(id) => self.custom_pipelines.get(&(*id, draw_format)),
+                    };
+                    let mut pass = begin(&mut encoder, view_at(depth), load);
+                    if let Some(pipeline) = pipeline
+                        && !instances.is_empty()
+                    {
+                        pass.set_pipeline(pipeline);
+                        pass.set_bind_group(0, bind_group, &[]);
+                        pass.set_vertex_buffer(0, self.instances.slice(..));
+                        pass.draw(0..4, instances.clone());
+                    }
+                }
+                Op::Effect(Effect::CaptureBackdrop { blur }) => {
+                    if fresh[depth] {
+                        fresh[depth] = false;
+                        drop(begin(
+                            &mut encoder,
+                            view_at(depth),
+                            wgpu::LoadOp::Clear(clear_at(depth)),
+                        ));
+                    }
+                    if let Some(effects) = &self.effects {
+                        let source = if depth == 0 {
+                            &effects.from_scene
+                        } else {
+                            &layers[depth - 1].post_group
+                        };
+                        Self::encode_blur(
+                            &mut encoder,
+                            effects,
+                            source,
+                            &self.downsample_pipeline,
+                            &self.blur_pipeline,
+                            *blur,
+                            self.post_stride,
+                            &mut post_slot,
+                            &mut post_writes,
+                        );
+                    }
+                }
+                Op::PushLayer => fresh.push(true),
+                Op::PopLayer { composite } => {
+                    if depth == 0 {
+                        continue;
+                    }
+                    let empty = fresh.pop().unwrap_or(true);
+                    let parent = depth - 1;
+                    if let Some(index) = composite
+                        && !empty
+                    {
+                        let load = if fresh[parent] {
+                            wgpu::LoadOp::Clear(clear_at(parent))
+                        } else {
+                            wgpu::LoadOp::Load
+                        };
+                        fresh[parent] = false;
+                        let mut pass = begin(&mut encoder, view_at(parent), load);
+                        pass.set_pipeline(pipeline);
+                        pass.set_bind_group(0, &layers[depth - 1].composite_group, &[]);
+                        pass.set_vertex_buffer(0, self.instances.slice(..));
+                        pass.draw(0..4, *index..*index + 1);
+                    }
                 }
             }
-            first = false;
-            if let Some(Some(Effect::CaptureBackdrop { blur })) = segment.map(|s| s.effect)
-                && let Some(effects) = &self.effects
-            {
-                Self::encode_blur(
-                    &mut encoder,
-                    effects,
-                    &self.downsample_pipeline,
-                    &self.blur_pipeline,
-                    blur,
-                    self.post_stride,
-                    &mut post_slot,
-                    &mut post_writes,
-                );
-            }
+        }
+        if fresh[0] {
+            drop(begin(&mut encoder, root, wgpu::LoadOp::Clear(clear_color)));
         }
 
         if use_effects && let Some(effects) = &self.effects {
@@ -847,6 +1036,7 @@ impl Renderer {
     fn encode_blur(
         encoder: &mut wgpu::CommandEncoder,
         effects: &EffectTargets,
+        source: &wgpu::BindGroup,
         downsample: &wgpu::RenderPipeline,
         blur: &wgpu::RenderPipeline,
         blur_radius: f32,
@@ -867,7 +1057,7 @@ impl Renderer {
         ); 3] = [
             (
                 downsample,
-                &effects.from_scene,
+                source,
                 &effects.blur_a.view,
                 PostParams {
                     texel: [1.0 / w as f32, 1.0 / h as f32],
@@ -969,6 +1159,29 @@ impl Renderer {
     ) -> Vec<u8> {
         read_texture(gpu, texture, width, height)
     }
+}
+
+fn begin_pass<'e>(
+    encoder: &'e mut wgpu::CommandEncoder,
+    view: &wgpu::TextureView,
+    load: wgpu::LoadOp<wgpu::Color>,
+) -> wgpu::RenderPass<'e> {
+    encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: Some("kova-native scene pass"),
+        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            view,
+            depth_slice: None,
+            resolve_target: None,
+            ops: wgpu::Operations {
+                load,
+                store: wgpu::StoreOp::Store,
+            },
+        })],
+        depth_stencil_attachment: None,
+        timestamp_writes: None,
+        occlusion_query_set: None,
+        multiview_mask: None,
+    })
 }
 
 fn read_texture(gpu: &GpuContext, texture: &wgpu::Texture, width: u32, height: u32) -> Vec<u8> {

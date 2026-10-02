@@ -19,7 +19,7 @@ pub use context::{Clipboard, EventCx, MeasureCx, MemoryClipboard, PaintCx, Windo
 pub use editor::TextEditor;
 pub use element::{AnyElement, DragEvent, Element, ElementBase, Interactive, IntoElement};
 pub use responsive::{Breakpoint, breakpoint, responsive, viewport_size};
-pub use style::{BoxShadow, Style, Styled, TextRefinement};
+pub use style::{BoxShadow, Mask, Style, Styled, TextRefinement};
 pub use theme::{Theme, set_theme, theme};
 pub use tree::{
     DispatchContext, DispatchResult, ElementTree, FrameContext, FrameOutput, FrameStats, NodeId,
@@ -34,7 +34,10 @@ pub mod prelude {
     pub use crate::elements::*;
     pub use crate::responsive::{Breakpoint, breakpoint, responsive, viewport_size};
     pub use crate::widgets::*;
-    pub use crate::{BoxShadow, Interactive, IntoElement, Style, Styled, Theme, set_theme, theme};
+    pub use crate::{
+        BoxShadow, Interactive, IntoElement, Mask, Style, Styled, Theme, set_theme, theme,
+    };
+    pub use kova_native_render::{ShaderId, register_shader};
 }
 
 #[cfg(test)]

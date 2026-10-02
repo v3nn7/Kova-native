@@ -16,9 +16,14 @@ const KIND_INSET_SHADOW: u32 = 2u;
 const KIND_MONO_SPRITE: u32 = 3u;
 const KIND_POLY_SPRITE: u32 = 4u;
 const KIND_BACKDROP: u32 = 5u;
+const KIND_LAYER: u32 = 6u;
+const KIND_CUSTOM: u32 = 7u;
 
 const FLAG_GRADIENT: u32 = 1u;
 const FLAG_GRAYSCALE: u32 = 2u;
+const MASK_GRADIENT: u32 = 1u;
+const MASK_MONO: u32 = 2u;
+const MASK_COLOR: u32 = 4u;
 
 struct Globals {
     viewport: vec2<f32>,
@@ -31,6 +36,7 @@ struct Globals {
 @group(0) @binding(1) var mono_atlas: texture_2d_array<f32>;
 @group(0) @binding(2) var color_atlas: texture_2d_array<f32>;
 @group(0) @binding(3) var atlas_sampler: sampler;
+// The blurred backdrop, or the layer being composited (KIND_LAYER).
 @group(0) @binding(4) var backdrop_texture: texture_2d<f32>;
 
 struct InstanceIn {
@@ -331,6 +337,21 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         let shape = saturate(0.5 - rounded_rect_sdf(in.local_pos, in.bounds.xy, in.bounds.zw, in.radii) * aa_scale);
         let tint = premultiply(in.color0);
         color = (texel * (1.0 - tint.a) + tint) * shape * in.params.z;
+    } else if kind == KIND_LAYER {
+        // Composites an offscreen layer (bound as backdrop_texture) through
+        // its mask, limited to the mask bounds.
+        let uv = in.position.xy / globals.viewport;
+        let texel = textureSampleLevel(backdrop_texture, atlas_sampler, uv, 0.0);
+        var mask = in.color0.a;
+        if (flags & MASK_GRADIENT) != 0u {
+            mask = gradient_color(in.local_pos, in.bounds, in.params.x, in.params.y, in.params.z, in.color0, in.color1).a;
+        } else if (flags & MASK_MONO) != 0u {
+            mask *= textureSampleLevel(mono_atlas, atlas_sampler, in.tex_coord, layer, 0.0).r;
+        } else if (flags & MASK_COLOR) != 0u {
+            mask *= textureSampleLevel(color_atlas, atlas_sampler, in.tex_coord, layer, 0.0).a;
+        }
+        let inside = saturate(0.5 - rounded_rect_sdf(in.local_pos, in.bounds.xy, in.bounds.zw, vec4<f32>(0.0)) * aa_scale);
+        color = texel * mask * inside;
     }
 
     return finish(color * clip);

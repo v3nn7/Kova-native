@@ -1223,6 +1223,7 @@ impl ElementTree {
         });
         let clips = style.layout.clips();
         let backdrop = style.backdrop_blur;
+        let mask = style.mask.clone();
         let text_style = node.text_style.clone();
         let mut pcx = PaintCx {
             scene: cx.scene,
@@ -1234,6 +1235,7 @@ impl ElementTree {
             opacity,
             bounds,
             content_bounds,
+            radii,
             text_style,
             text_color,
             now,
@@ -1253,6 +1255,9 @@ impl ElementTree {
         }
         node.painted = true;
         self.stats.nodes_painted += 1;
+        if mask.is_some() {
+            pcx.push_layer();
+        }
 
         for shadow in visual.shadows.iter().filter(|s| !s.inset) {
             pcx.paint_shadow(bounds, radii, shadow);
@@ -1355,6 +1360,13 @@ impl ElementTree {
 
         // Overlay: element overlay and scrollbars, above children.
         let Some(node) = self.nodes.get_mut(id) else {
+            if mask.is_some() {
+                cx.scene.pop_layer(
+                    Bounds::ZERO,
+                    kova_native_render::LayerMask::None,
+                    &Default::default(),
+                );
+            }
             return;
         };
         let mut pcx = PaintCx {
@@ -1367,6 +1379,7 @@ impl ElementTree {
             opacity,
             bounds,
             content_bounds,
+            radii,
             text_style: node.text_style.clone(),
             text_color,
             now,
@@ -1385,6 +1398,11 @@ impl ElementTree {
                 scroll_offset,
                 node.hovered,
             );
+        }
+        if let Some(mask) = &mask {
+            // The mask covers the border box at the element's (unclipped) transform.
+            pcx.clip = parent.clip;
+            pcx.pop_layer(bounds, mask);
         }
         merge_wake(&mut self.next_wake, pcx.wake_at.take());
     }

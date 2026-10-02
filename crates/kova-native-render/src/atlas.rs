@@ -28,6 +28,8 @@ pub enum AtlasKey {
         height: u32,
         mono: bool,
     },
+    /// Application-supplied pixels (procedural masks, decoded frames...).
+    Custom(u64),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

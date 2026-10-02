@@ -11,14 +11,21 @@
 //!
 //! Glyphs and images live in growable texture-array atlases, so atlas growth
 //! never breaks batches either.
+//!
+//! [`Scene::push_layer`]/[`Scene::pop_layer`] render a group of primitives
+//! offscreen and composite it through a [`LayerMask`] (SVG/image coverage or
+//! an alpha gradient). [`register_shader`] adds custom WGSL fragment shaders
+//! drawn with [`Scene::push_custom`].
 
 mod atlas;
 mod renderer;
 mod scene;
+pub mod shaders;
 
 pub use atlas::{ATLAS_SIZE, Atlas, AtlasImage, AtlasKey, AtlasKind, AtlasTile};
 pub use renderer::{GpuContext, Renderer, SurfaceOptions, WindowSurface};
-pub use scene::{ContentMask, DrawState, Effect, Quad, Scene, SceneStats, Shadow};
+pub use scene::{ContentMask, DrawState, Effect, LayerMask, Quad, Scene, SceneStats, Shadow};
+pub use shaders::{ShaderId, register_shader};
 pub use wgpu;
 
 #[cfg(test)]

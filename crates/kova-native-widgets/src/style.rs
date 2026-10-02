@@ -19,6 +19,95 @@ use kova_native_layout::{
 };
 use kova_native_text::{FontStyle, FontWeight, LineHeight, TextAlign, TextStyle, TextWrap};
 use smallvec::SmallVec;
+use std::sync::Arc;
+
+/// Masks an element and its descendants (like CSS `mask`). The element is
+/// rendered offscreen and composited through the mask, which is stretched
+/// over its border box; anything outside the border box is cut off.
+#[derive(Clone, Debug)]
+pub enum Mask {
+    /// Alpha ramps from `from` to `to` along `angle` degrees (0 = upwards,
+    /// 90 = to the right, 180 = downwards) between the fractional positions
+    /// `start` and `end`.
+    LinearGradient {
+        angle: f32,
+        from: f32,
+        to: f32,
+        start: f32,
+        end: f32,
+    },
+    /// The coverage of an SVG (any shape, text outlines, icons).
+    Svg(Arc<kova_native_assets::SvgData>),
+    /// The alpha channel of a raster image.
+    Image(Arc<kova_native_assets::ImageData>),
+}
+
+impl Mask {
+    /// Fully visible until `start`, fading out towards `end` along `angle`
+    /// (e.g. `Mask::fade(180.0, 0.85, 1.0)` fades the bottom 15%).
+    pub fn fade(angle: f32, start: f32, end: f32) -> Mask {
+        Mask::LinearGradient {
+            angle,
+            from: 1.0,
+            to: 0.0,
+            start,
+            end,
+        }
+    }
+
+    /// An SVG mask from any source accepted by [`svg`](crate::elements::svg).
+    /// Invalid sources are logged and mask everything.
+    pub fn svg(source: impl Into<crate::elements::SvgSource>) -> Mask {
+        let data = match source.into() {
+            crate::elements::SvgSource::Data(d) => Ok(d),
+            crate::elements::SvgSource::Path(p) => {
+                kova_native_assets::AssetCache::global().svg_from_path(p)
+            }
+            crate::elements::SvgSource::Static(b) => {
+                kova_native_assets::AssetCache::global().svg_from_static(b)
+            }
+        };
+        match data {
+            Ok(data) => Mask::Svg(data),
+            Err(e) => {
+                log::warn!("kova-native mask: {e}");
+                Mask::LinearGradient {
+                    angle: 0.0,
+                    from: 0.0,
+                    to: 0.0,
+                    start: 0.0,
+                    end: 1.0,
+                }
+            }
+        }
+    }
+}
+
+impl PartialEq for Mask {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                Mask::LinearGradient {
+                    angle: a1,
+                    from: f1,
+                    to: t1,
+                    start: s1,
+                    end: e1,
+                },
+                Mask::LinearGradient {
+                    angle: a2,
+                    from: f2,
+                    to: t2,
+                    start: s2,
+                    end: e2,
+                },
+            ) => a1 == a2 && f1 == f2 && t1 == t2 && s1 == s2 && e1 == e2,
+            (Mask::Svg(a), Mask::Svg(b)) => a.id() == b.id(),
+            (Mask::Image(a), Mask::Image(b)) => a.id() == b.id(),
+            _ => false,
+        }
+    }
+}
 
 /// A CSS-like box shadow.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -131,6 +220,8 @@ pub struct Style {
     /// When `false` the element is transparent to the pointer.
     pub pointer_events: bool,
     pub transition: Option<Transition>,
+    /// Masks the element and its subtree; see [`Mask`].
+    pub mask: Option<Mask>,
 }
 
 impl Default for Style {
@@ -152,6 +243,7 @@ impl Default for Style {
             disabled: false,
             pointer_events: true,
             transition: None,
+            mask: None,
         }
     }
 }
@@ -704,6 +796,18 @@ pub trait Styled: Sized {
     }
     fn backdrop_blur(self, radius: f32) -> Self {
         self.with_style(|s| s.backdrop_blur = Some(radius))
+    }
+    /// Masks the element and its descendants (CSS `mask`).
+    ///
+    /// ```ignore
+    /// column().overflow_y_scroll().mask(Mask::fade(180.0, 0.85, 1.0))
+    /// avatar_image.mask(Mask::svg(HEXAGON_SVG))
+    /// ```
+    fn mask(self, mask: Mask) -> Self {
+        self.with_style(|s| s.mask = Some(mask))
+    }
+    fn no_mask(self) -> Self {
+        self.with_style(|s| s.mask = None)
     }
     fn cursor(self, cursor: CursorStyle) -> Self {
         self.with_style(|s| s.cursor = Some(cursor))

@@ -312,3 +312,140 @@ fn backdrop_respects_group_opacity() {
         );
     });
 }
+
+#[test]
+fn layers_composite_through_gradient_masks() {
+    with_gpu(|gpu, renderer| {
+        let mut scene = Scene::new();
+        let state = DrawState::default();
+        scene.push_layer();
+        scene.push_quad(
+            &Quad::filled(bounds(0.0, 0.0, 100.0, 20.0), rgb(0xffffff)),
+            &state,
+        );
+        // Opaque on the left, transparent on the right.
+        scene.pop_layer(
+            bounds(0.0, 0.0, 100.0, 20.0),
+            LayerMask::LinearGradient {
+                angle: 90.0,
+                from: 1.0,
+                to: 0.0,
+                start: 0.0,
+                end: 1.0,
+            },
+            &state,
+        );
+        let px = renderer.render_to_rgba(gpu, &scene, 100, 20, Color::BLACK);
+        let left = pixel(&px, 100, 2, 10)[0];
+        let middle = pixel(&px, 100, 50, 10)[0];
+        let right = pixel(&px, 100, 97, 10)[0];
+        assert!(left > 240, "left {left}");
+        assert!((100..160).contains(&middle), "middle {middle}");
+        assert!(right < 15, "right {right}");
+    });
+}
+
+#[test]
+fn layers_composite_through_atlas_tile_masks_and_nest() {
+    with_gpu(|gpu, renderer| {
+        // A 16x16 mono mask: a filled disc.
+        let size = 16u32;
+        let disc: Vec<u8> = (0..size * size)
+            .map(|i| {
+                let (x, y) = ((i % size) as f32 + 0.5 - 8.0, (i / size) as f32 + 0.5 - 8.0);
+                if x * x + y * y <= 49.0 { 255 } else { 0 }
+            })
+            .collect();
+        let tile = renderer
+            .atlas()
+            .get_or_insert_with(AtlasKey::Custom(7), || {
+                Some(AtlasImage {
+                    kind: AtlasKind::Mono,
+                    width: size,
+                    height: size,
+                    data: Cow::Owned(disc),
+                    origin: (0, 0),
+                })
+            })
+            .expect("tile");
+        let mut scene = Scene::new();
+        let state = DrawState::default();
+        scene.push_layer();
+        scene.push_layer();
+        scene.push_quad(
+            &Quad::filled(bounds(0.0, 0.0, 64.0, 64.0), rgb(0x00ff00)),
+            &state,
+        );
+        scene.pop_layer(bounds(0.0, 0.0, 64.0, 64.0), LayerMask::None, &state);
+        // An empty layer composites nothing.
+        scene.push_layer();
+        scene.pop_layer(bounds(0.0, 0.0, 64.0, 64.0), LayerMask::None, &state);
+        scene.pop_layer(bounds(0.0, 0.0, 64.0, 64.0), LayerMask::Tile(tile), &state);
+        assert_eq!(scene.layer_depth(), 0);
+        let px = renderer.render_to_rgba(gpu, &scene, 64, 64, Color::BLACK);
+        assert!(
+            close(pixel(&px, 64, 32, 32), [0, 255, 0, 255], 2),
+            "disc center {:?}",
+            pixel(&px, 64, 32, 32)
+        );
+        assert!(
+            close(pixel(&px, 64, 2, 2), [0, 0, 0, 255], 2),
+            "outside the disc {:?}",
+            pixel(&px, 64, 2, 2)
+        );
+    });
+}
+
+#[test]
+fn custom_shaders_draw_with_parameters_and_batch() {
+    with_gpu(|gpu, renderer| {
+        let shader = register_shader(
+            "split",
+            r#"
+fn shade(input: ShaderInput) -> vec4<f32> {
+    if input.uv.x < 0.5 {
+        return input.params0;
+    }
+    return vec4<f32>(input.params1.rgb, 1.0);
+}
+"#,
+        )
+        .expect("valid shader");
+        let mut scene = Scene::new();
+        let state = DrawState::default();
+        for i in 0..2 {
+            scene.push_custom(
+                shader,
+                bounds(i as f32 * 40.0, 0.0, 40.0, 20.0),
+                Corners::ZERO,
+                [1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0],
+                0.0,
+                Color::WHITE,
+                1.0,
+                &state,
+            );
+        }
+        scene.push_quad(
+            &Quad::filled(bounds(80.0, 0.0, 20.0, 20.0), rgb(0x00ff00)),
+            &state,
+        );
+        assert_eq!(scene.stats().draw_calls, 2, "custom run + built-in run");
+        let px = renderer.render_to_rgba(gpu, &scene, 100, 20, Color::BLACK);
+        assert!(
+            close(pixel(&px, 100, 5, 10), [255, 0, 0, 255], 1),
+            "params0"
+        );
+        assert!(
+            close(pixel(&px, 100, 35, 10), [0, 0, 255, 255], 1),
+            "params1"
+        );
+        assert!(
+            close(pixel(&px, 100, 45, 10), [255, 0, 0, 255], 1),
+            "second instance"
+        );
+        assert!(
+            close(pixel(&px, 100, 90, 10), [0, 255, 0, 255], 1),
+            "built-in after"
+        );
+    });
+}

@@ -7,7 +7,8 @@ use kova_native_core::{
 };
 use kova_native_input::{Action, DispatchPhase};
 use kova_native_render::{
-    Atlas, AtlasImage, AtlasKey, AtlasKind, ContentMask, DrawState, Quad, Scene, Shadow,
+    Atlas, AtlasImage, AtlasKey, AtlasKind, ContentMask, DrawState, LayerMask, Quad, Scene,
+    ShaderId, Shadow,
 };
 use kova_native_text::{TextLayout, TextStyle, TextSystem};
 use std::borrow::Cow;
@@ -215,6 +216,8 @@ pub struct PaintCx<'a> {
     pub(crate) opacity: f32,
     pub(crate) bounds: Bounds,
     pub(crate) content_bounds: Bounds,
+    /// Resolved (possibly animating) corner radii of the element.
+    pub(crate) radii: Corners<f32>,
     pub(crate) text_style: TextStyle,
     pub(crate) text_color: Color,
     pub(crate) now: Instant,
@@ -234,6 +237,11 @@ impl PaintCx<'_> {
     /// The element's content box (inside border and padding).
     pub fn content_bounds(&self) -> Bounds {
         self.content_bounds
+    }
+
+    /// The element's resolved corner radii (logical px).
+    pub fn corner_radii(&self) -> Corners<f32> {
+        self.radii
     }
 
     pub fn scale_factor(&self) -> f32 {
@@ -489,6 +497,105 @@ impl PaintCx<'_> {
         let state = self.draw_state();
         self.scene
             .push_backdrop_blur(b, radii.scale(self.scale), blur * self.scale, tint, &state);
+    }
+
+    /// Paints `bounds` (logical px) with a custom shader registered through
+    /// [`kova_native_render::register_shader`]. `params` arrive as
+    /// `input.params0`/`params1`, `time` as `input.time`, and the inherited
+    /// text color as `input.color`.
+    pub fn paint_shader(
+        &mut self,
+        shader: ShaderId,
+        bounds: Bounds,
+        radii: Corners<f32>,
+        params: [f32; 8],
+        time: f32,
+    ) {
+        let b = self.snap(bounds);
+        let state = self.draw_state();
+        self.scene.push_custom(
+            shader,
+            b,
+            radii.scale(self.scale),
+            params,
+            time,
+            self.text_color,
+            self.scale,
+            &state,
+        );
+    }
+
+    /// Starts an offscreen layer; pair with [`PaintCx::pop_layer`].
+    pub fn push_layer(&mut self) {
+        self.scene.push_layer();
+    }
+
+    /// Composites the innermost layer inside `bounds` (logical px) through
+    /// `mask`, following the current transform and clip.
+    pub fn pop_layer(&mut self, bounds: Bounds, mask: &crate::style::Mask) {
+        let b = self.snap(bounds);
+        let layer_mask = match mask {
+            crate::style::Mask::LinearGradient {
+                angle,
+                from,
+                to,
+                start,
+                end,
+            } => LayerMask::LinearGradient {
+                angle: *angle,
+                from: *from,
+                to: *to,
+                start: *start,
+                end: *end,
+            },
+            crate::style::Mask::Svg(svg) => {
+                let (w, h) = (b.size.width.max(1.0) as u32, b.size.height.max(1.0) as u32);
+                let tile = self.atlas.get_or_insert_with(
+                    AtlasKey::Vector {
+                        id: svg.id(),
+                        width: w,
+                        height: h,
+                        mono: true,
+                    },
+                    || {
+                        Some(AtlasImage {
+                            kind: AtlasKind::Mono,
+                            width: w,
+                            height: h,
+                            data: Cow::Owned(svg.rasterize_mask(w, h)?),
+                            origin: (0, 0),
+                        })
+                    },
+                );
+                match tile {
+                    Some(tile) => LayerMask::Tile(tile),
+                    None => LayerMask::None,
+                }
+            }
+            crate::style::Mask::Image(image) => {
+                let tile = self
+                    .atlas
+                    .get_or_insert_with(AtlasKey::Image(image.id()), || {
+                        Some(AtlasImage {
+                            kind: AtlasKind::Color,
+                            width: image.width(),
+                            height: image.height(),
+                            data: Cow::Borrowed(image.pixels()),
+                            origin: (0, 0),
+                        })
+                    });
+                match tile {
+                    Some(tile) => LayerMask::Tile(tile),
+                    None => LayerMask::None,
+                }
+            }
+        };
+        // Content inside the layer already carries the group opacity.
+        let state = DrawState {
+            opacity: 1.0,
+            ..self.draw_state()
+        };
+        self.scene.pop_layer(b, layer_mask, &state);
     }
 
     /// Runs `f` with an additional (rounded) clip in logical coordinates.

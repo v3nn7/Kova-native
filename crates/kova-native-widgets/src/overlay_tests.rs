@@ -338,3 +338,65 @@ fn focus_rings_follow_keyboard_modality() {
     drop(ui);
     owner.dispose();
 }
+
+fn gpu_ui(size: Size, build: impl FnMut() -> crate::elements::Div + 'static) -> Option<Headless> {
+    match Headless::new(size, build).with_gpu() {
+        Ok(ui) => Some(ui),
+        Err(e) => {
+            eprintln!("skipping GPU test: {e}");
+            None
+        }
+    }
+}
+
+fn px(rgba: &[u8], width: u32, x: u32, y: u32) -> [u8; 4] {
+    let i = ((y * width + x) * 4) as usize;
+    [rgba[i], rgba[i + 1], rgba[i + 2], rgba[i + 3]]
+}
+
+#[test]
+fn masks_and_custom_shaders_render_through_the_tree() {
+    const DISC: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="5" fill="#000"/></svg>"##;
+    let shader_id = kova_native_render::register_shader(
+        "tree-solid",
+        "fn shade(input: ShaderInput) -> vec4<f32> { return vec4<f32>(input.params0.rgb, 1.0); }",
+    )
+    .expect("valid shader");
+    let (owner, ()) = setup(|| ());
+    let Some(mut ui) = gpu_ui(Size::new(300.0, 100.0), move || {
+        row()
+            .bg(0x000000)
+            .size_full()
+            .items_start()
+            // White box fading out downwards.
+            .child(
+                div()
+                    .w(100.0)
+                    .h(100.0)
+                    .bg(0xffffff)
+                    .mask(crate::Mask::fade(180.0, 0.0, 1.0)),
+            )
+            // Red box clipped to a disc.
+            .child(div().size(100.0).bg(0xff0000).mask(crate::Mask::svg(DISC)))
+            // Custom shader filling with its parameters (green).
+            .child(
+                crate::elements::shader(shader_id)
+                    .size(100.0)
+                    .params(|| [0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0]),
+            )
+    }) else {
+        owner.dispose();
+        return;
+    };
+    let rgba = ui.capture().expect("capture");
+    let w = 300;
+    let top = px(&rgba, w, 50, 3)[0];
+    let bottom = px(&rgba, w, 50, 97)[0];
+    assert!(top > 235 && bottom < 20, "fade mask {top} -> {bottom}");
+    assert!(px(&rgba, w, 150, 50)[0] > 240, "disc center is red");
+    assert!(px(&rgba, w, 103, 3)[0] < 10, "disc corner is masked");
+    let green = px(&rgba, w, 250, 50);
+    assert!(green[1] > 240 && green[0] < 10, "shader output {green:?}");
+    drop(ui);
+    owner.dispose();
+}

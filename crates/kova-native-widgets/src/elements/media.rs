@@ -316,3 +316,81 @@ impl Element for Canvas {
 }
 
 crate::impl_element_builder!(Canvas);
+
+/// Fills the element with a custom WGSL shader registered through
+/// [`register_shader`](kova_native_render::register_shader). The element's
+/// corner radii, clip and opacity apply; size it like any other box.
+///
+/// ```ignore
+/// let plasma = register_shader("plasma", PLASMA_WGSL)?;
+/// shader(plasma).size(240.0).rounded(12.0).animate().params(move || {
+///     let c = accent.get();
+///     [c.r, c.g, c.b, 1.0, 0.0, 0.0, 0.0, 0.0]
+/// })
+/// ```
+pub struct ShaderView {
+    base: ElementBase,
+    shader: kova_native_render::ShaderId,
+    params: Option<Rc<dyn Fn() -> [f32; 8]>>,
+    animated: bool,
+    start: Option<kova_native_core::Instant>,
+}
+
+/// Creates a [`ShaderView`] drawing with `shader`.
+pub fn shader(shader: kova_native_render::ShaderId) -> ShaderView {
+    ShaderView {
+        base: ElementBase::new(),
+        shader,
+        params: None,
+        animated: false,
+        start: None,
+    }
+}
+
+impl ShaderView {
+    /// Reactive parameters (`input.params0`, `input.params1`); the element
+    /// repaints when signals read here change.
+    pub fn params(mut self, params: impl Fn() -> [f32; 8] + 'static) -> Self {
+        self.params = Some(Rc::new(params));
+        self
+    }
+
+    /// Supplies `input.time` (seconds since mount) and repaints every frame.
+    pub fn animate(mut self) -> Self {
+        self.animated = true;
+        self
+    }
+}
+
+impl Element for ShaderView {
+    fn base(&self) -> &ElementBase {
+        &self.base
+    }
+
+    fn base_mut(&mut self) -> &mut ElementBase {
+        &mut self.base
+    }
+
+    fn name(&self) -> &'static str {
+        "shader"
+    }
+
+    fn tracks_paint(&self) -> bool {
+        true
+    }
+
+    fn paint(&mut self, cx: &mut PaintCx) {
+        let params = self.params.as_ref().map_or([0.0; 8], |f| f());
+        let time = if self.animated {
+            let start = *self.start.get_or_insert(cx.now());
+            cx.request_animation_frame();
+            cx.now().saturating_duration_since(start).as_secs_f32()
+        } else {
+            0.0
+        };
+        let (bounds, radii) = (cx.bounds(), cx.corner_radii());
+        cx.paint_shader(self.shader, bounds, radii, params, time);
+    }
+}
+
+crate::impl_element_builder!(ShaderView);
