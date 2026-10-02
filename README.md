@@ -38,7 +38,7 @@ cargo run -p showcase -- --page typography --light
 
 ## What's new in 0.3.0
 
-![Overlays example](docs/media/overlays.gif)
+![Overlays example](https://raw.githubusercontent.com/v3nn7/Kova-native/main/docs/media/overlays.gif)
 
 - **Overlay layer**: `portal()` with anchored placement, `dialog`, `confirm_dialog`,
   `drawer`, `popover`, `dropdown_menu`, `context_menu`, `select`, `tooltip`,
