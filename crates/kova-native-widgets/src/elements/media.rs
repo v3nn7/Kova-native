@@ -56,6 +56,7 @@ impl<const N: usize> From<&'static [u8; N]> for ImageSource {
 pub struct Img {
     base: ElementBase,
     data: Option<Arc<ImageData>>,
+    binding: Option<Rc<dyn Fn() -> Option<Arc<ImageData>>>>,
     fit: ObjectFit,
     grayscale: bool,
 }
@@ -71,6 +72,19 @@ pub fn img(source: impl Into<ImageSource>) -> Img {
     Img {
         base: ElementBase::new(),
         data,
+        binding: None,
+        fit: ObjectFit::Fill,
+        grayscale: false,
+    }
+}
+
+/// Creates a retained image whose source is refreshed in place when signals
+/// read by `source` change. Return `None` to clear the image.
+pub fn img_bind(source: impl Fn() -> Option<Arc<ImageData>> + 'static) -> Img {
+    Img {
+        base: ElementBase::new(),
+        data: None,
+        binding: Some(Rc::new(source)),
         fit: ObjectFit::Fill,
         grayscale: false,
     }
@@ -137,6 +151,23 @@ impl Element for Img {
 
     fn is_measured(&self) -> bool {
         true
+    }
+
+    fn has_bindings(&self) -> bool {
+        self.binding.is_some()
+    }
+
+    fn update_bindings(&mut self) -> bool {
+        let Some(binding) = &self.binding else {
+            return false;
+        };
+        let next = binding();
+        let changed =
+            self.data.as_ref().map(|data| data.id()) != next.as_ref().map(|data| data.id());
+        if changed {
+            self.data = next;
+        }
+        changed
     }
 
     fn measure(&mut self, _cx: &mut MeasureCx, input: MeasureInput) -> Size {

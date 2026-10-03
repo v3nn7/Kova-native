@@ -10,7 +10,7 @@ The package and Rust API use the new name throughout:
 
 ```toml
 [dependencies]
-kova-native = "0.3.0"
+kova-native = "0.3.1"
 ```
 
 Import the framework with `use kova_native::prelude::*`. Subsystem packages use
@@ -35,6 +35,13 @@ cargo run -p showcase -- --page components
 cargo run -p showcase -- --page motion
 cargo run -p showcase -- --page typography --light
 ```
+
+## What's new in 0.3.1
+
+- **Desktop file drops**: `.on_file_drop(..)` receives each dropped path.
+- **Reactive images**: `img_bind(..)` swaps or clears an image in its mounted element.
+- **Pen pressure**: `.on_pen(..)` delivers normalized pressure and pointer phases to the hit element.
+- **Close interception**: `.on_close_request(..)` can accept or cancel OS and UI close requests.
 
 ## What's new in 0.3.0
 

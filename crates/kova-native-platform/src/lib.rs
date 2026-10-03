@@ -11,10 +11,11 @@ mod convert;
 use kova_native_core::{Bounds, KovaError, KovaResult, Point, Size};
 use kova_native_input::{
     ClickTracker, CursorStyle, ImeEvent, InputEvent, KeyDownEvent, KeyUpEvent, Keystroke,
-    Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ScrollDelta,
-    ScrollWheelEvent,
+    Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PenEvent, PenPhase,
+    ScrollDelta, ScrollWheelEvent,
 };
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 use winit::application::ApplicationHandler;
@@ -163,6 +164,8 @@ pub enum PlatformEvent {
     CloseRequested,
     Focused(bool),
     Occluded(bool),
+    /// A file was dropped onto the window.
+    FileDropped(PathBuf),
     Input(InputEvent),
 }
 
@@ -322,6 +325,31 @@ impl<H: PlatformHandler> Runner<H> {
                 PlatformEvent::Focused(*focused)
             }
             WindowEvent::Occluded(occluded) => PlatformEvent::Occluded(*occluded),
+            WindowEvent::DroppedFile(path) => PlatformEvent::FileDropped(path.clone()),
+            WindowEvent::Touch(touch) => {
+                let pressure = match touch.force? {
+                    winit::event::Force::Normalized(value) => value,
+                    winit::event::Force::Calibrated {
+                        force,
+                        max_possible_force,
+                        ..
+                    } if max_possible_force > 0.0 => force / max_possible_force,
+                    winit::event::Force::Calibrated { .. } => 0.0,
+                }
+                .clamp(0.0, 1.0) as f32;
+                let phase = match touch.phase {
+                    winit::event::TouchPhase::Started => PenPhase::Started,
+                    winit::event::TouchPhase::Moved => PenPhase::Moved,
+                    winit::event::TouchPhase::Ended => PenPhase::Ended,
+                    winit::event::TouchPhase::Cancelled => PenPhase::Cancelled,
+                };
+                PlatformEvent::Input(InputEvent::Pen(PenEvent {
+                    pointer_id: touch.id,
+                    phase,
+                    position: convert::logical(touch.location, input.scale),
+                    pressure,
+                }))
+            }
             WindowEvent::ModifiersChanged(m) => {
                 input.modifiers = convert::modifiers(m.state());
                 PlatformEvent::Input(InputEvent::ModifiersChanged(input.modifiers))

@@ -58,6 +58,26 @@ pub struct MouseMoveEvent {
     pub modifiers: Modifiers,
 }
 
+/// Phase of a pressure-sensitive pointer (for example, a stylus).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PenPhase {
+    Started,
+    Moved,
+    Ended,
+    Cancelled,
+}
+
+/// Pressure-sensitive pointer event in logical window pixels.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PenEvent {
+    /// Touch/pointer identifier supplied by the platform.
+    pub pointer_id: u64,
+    pub phase: PenPhase,
+    pub position: Point,
+    /// Normalized pressure, clamped to `0.0..=1.0`.
+    pub pressure: f32,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScrollWheelEvent {
     pub position: Point,
@@ -97,6 +117,8 @@ pub enum InputEvent {
     MouseDown(MouseDownEvent),
     MouseUp(MouseUpEvent),
     MouseMove(MouseMoveEvent),
+    /// Pressure-aware pointer input from platforms that report touch force.
+    Pen(PenEvent),
     /// The pointer left the window.
     MouseExit,
     ScrollWheel(ScrollWheelEvent),
@@ -114,6 +136,7 @@ impl InputEvent {
             InputEvent::MouseDown(e) => Some(e.position),
             InputEvent::MouseUp(e) => Some(e.position),
             InputEvent::MouseMove(e) => Some(e.position),
+            InputEvent::Pen(e) => Some(e.position),
             InputEvent::ScrollWheel(e) => Some(e.position),
             _ => None,
         }

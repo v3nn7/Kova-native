@@ -15,7 +15,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! kova-native = "0.3.0"
+//! kova-native = "0.3.1"
 //! ```
 //!
 //! The package name uses hyphens; the Rust import is `kova_native`.
@@ -78,6 +78,32 @@
 //! Keyboard dispatch follows the focus path; pointer dispatch uses hit testing,
 //! capture and bubbling through the retained element tree.
 //!
+//! Use [`Application::on_file_drop`] to receive paths dragged from the desktop
+//! onto the window. The callback runs once for each dropped file:
+//!
+//! ```no_run
+//! use kova_native::prelude::*;
+//! use std::path::PathBuf;
+//!
+//! fn main() -> KovaResult<()> {
+//!     let owner = Owner::new_root();
+//!     let dropped_path = owner.with(|| signal(String::from("Drop a file here")));
+//!     let result = Application::new()
+//!         .on_file_drop({
+//!             let dropped_path = dropped_path.clone();
+//!             move |path: PathBuf| dropped_path.set(path.display().to_string())
+//!         })
+//!         .run(move || text(move || dropped_path.get()));
+//!     owner.dispose();
+//!     result.map(|_| ())
+//! }
+//! ```
+//!
+//! `widgets::elements::img_bind` updates a mounted image when its signal changes,
+//! preserving the image element. Use `.on_pen(...)` on an element to receive
+//! pressure-aware pointer events, and `.on_close_request(...)` on the application
+//! to accept or cancel an attempt to close its window.
+//!
 //! # Subsystems
 //!
 //! The facade re-exports the existing library crates. Use these modules when
@@ -132,7 +158,9 @@ pub mod prelude {
     };
     pub use kova_native_assets::{ImageData, SvgData};
     pub use kova_native_core::*;
-    pub use kova_native_input::{Action, Key, KeyBinding, Keystroke, Modifiers, NamedKey, actions};
+    pub use kova_native_input::{
+        Action, Key, KeyBinding, Keystroke, Modifiers, NamedKey, PenEvent, PenPhase, actions,
+    };
     pub use kova_native_layout::{Length, Track, auto, pct, px, relative};
     pub use kova_native_text::{FontStyle, FontWeight, LineHeight, TextAlign, TextStyle, TextWrap};
     pub use kova_native_widgets::headless::Headless;

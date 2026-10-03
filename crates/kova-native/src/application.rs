@@ -12,6 +12,7 @@ use kova_native_widgets::{
     DispatchContext, ElementTree, FrameContext, FrameStats, IntoElement, WindowCommand,
 };
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 /// Native window and presentation settings, using the platform/renderer options.
@@ -65,6 +66,8 @@ pub struct RunReport {
 pub struct Application {
     options: WindowOptions,
     bindings: Vec<KeyBinding>,
+    on_file_drop: Option<Box<dyn FnMut(PathBuf)>>,
+    on_close_request: Option<Box<dyn FnMut() -> bool>>,
     run_for: Option<Duration>,
 }
 
@@ -100,6 +103,22 @@ impl Application {
         self
     }
 
+    /// Registers a callback for files dropped onto the application window.
+    ///
+    /// The operating system reports each dropped file separately, so the
+    /// callback runs once per file when multiple files are dropped together.
+    pub fn on_file_drop(mut self, callback: impl FnMut(PathBuf) + 'static) -> Self {
+        self.on_file_drop = Some(Box::new(callback));
+        self
+    }
+
+    /// Intercepts window close requests. Return `true` to close or `false` to
+    /// keep the window open. With no callback, close requests are accepted.
+    pub fn on_close_request(mut self, callback: impl FnMut() -> bool + 'static) -> Self {
+        self.on_close_request = Some(Box::new(callback));
+        self
+    }
+
     /// Ends the event loop after a bounded duration, even when the UI is idle.
     /// Useful for native startup smoke tests and automated example runs.
     pub fn run_for(mut self, duration: Duration) -> Self {
@@ -132,6 +151,8 @@ impl Application {
             build: Some(Box::new(move || build().into_any())),
             state: None,
             keymap,
+            on_file_drop: self.on_file_drop,
+            on_close_request: self.on_close_request,
             run_for: self.run_for,
             deadline: None,
             shared: shared.clone(),
@@ -184,6 +205,8 @@ struct Runner {
     build: Option<Box<dyn FnMut() -> kova_native_widgets::AnyElement>>,
     state: Option<NativeWindow>,
     keymap: Keymap,
+    on_file_drop: Option<Box<dyn FnMut(PathBuf)>>,
+    on_close_request: Option<Box<dyn FnMut() -> bool>>,
     run_for: Option<Duration>,
     deadline: Option<Instant>,
     shared: Rc<RefCell<Outcome>>,
@@ -309,6 +332,21 @@ impl Runner {
             .map(|s| s.tree.take_window_commands())
             .unwrap_or_default();
         for command in commands {
+            if matches!(command, WindowCommand::Close | WindowCommand::Quit) {
+                let accepted = self
+                    .on_close_request
+                    .as_mut()
+                    .is_none_or(|callback| callback());
+                if accepted {
+                    if let Some(state) = &self.state {
+                        let id = state.window.id();
+                        self.state = None;
+                        cx.destroy_window(id);
+                        cx.exit();
+                    }
+                }
+                continue;
+            }
             let Some(state) = &self.state else { break };
             match command {
                 WindowCommand::SetTitle(title) => state.window.set_title(&title),
@@ -316,12 +354,7 @@ impl Runner {
                 WindowCommand::ToggleMaximize => {
                     state.window.set_maximized(!state.window.is_maximized())
                 }
-                WindowCommand::Close | WindowCommand::Quit => {
-                    let id = state.window.id();
-                    self.state = None;
-                    cx.destroy_window(id);
-                    cx.exit();
-                }
+                WindowCommand::Close | WindowCommand::Quit => unreachable!(),
             }
         }
     }
@@ -351,6 +384,14 @@ impl PlatformHandler for Runner {
         id: PlatformWindowId,
         event: PlatformEvent,
     ) {
+        if let PlatformEvent::CloseRequested = &event
+            && !self
+                .on_close_request
+                .as_mut()
+                .is_none_or(|callback| callback())
+        {
+            return;
+        }
         let Some(state) = &mut self.state else { return };
         if state.window.id() != id {
             return;
@@ -404,6 +445,11 @@ impl PlatformHandler for Runner {
                 );
                 for action in result.unhandled_actions {
                     log::debug!("kova-native: unhandled action {}", action.name());
+                }
+            }
+            PlatformEvent::FileDropped(path) => {
+                if let Some(callback) = &mut self.on_file_drop {
+                    callback(path);
                 }
             }
         }

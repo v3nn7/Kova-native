@@ -8,7 +8,8 @@ mod text;
 
 pub use div::{Div, column, div, empty, row, spacer, stack};
 pub use media::{
-    Canvas, ImageSource, Img, ObjectFit, ShaderView, Svg, SvgSource, canvas, icon, img, shader, svg,
+    Canvas, ImageSource, Img, ObjectFit, ShaderView, Svg, SvgSource, canvas, icon, img, img_bind,
+    shader, svg,
 };
 pub use overlay::{
     Alignment, Anchor, Placement, Portal, PortalSpec, Side, VIEWPORT_MARGIN, place, portal,

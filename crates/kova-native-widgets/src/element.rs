@@ -13,7 +13,7 @@ use kova_native_animation::Animation;
 use kova_native_core::{ElementId, Instant, Point, Size};
 use kova_native_input::{
     Action, DispatchPhase, InputEvent, KeyDownEvent, KeyUpEvent, MouseButton, MouseDownEvent,
-    MouseMoveEvent, MouseUpEvent, ScrollWheelEvent,
+    MouseMoveEvent, MouseUpEvent, PenEvent, ScrollWheelEvent,
 };
 use kova_native_layout::MeasureInput;
 use smallvec::SmallVec;
@@ -54,6 +54,7 @@ pub(crate) struct Handlers {
     pub mouse_up: Vec<(DispatchPhase, EventFn<MouseUpEvent>)>,
     pub mouse_move: Vec<(DispatchPhase, EventFn<MouseMoveEvent>)>,
     pub scroll: Vec<(DispatchPhase, EventFn<ScrollWheelEvent>)>,
+    pub pen: Vec<(DispatchPhase, EventFn<PenEvent>)>,
     pub key_down: Vec<(DispatchPhase, EventFn<KeyDownEvent>)>,
     pub key_up: Vec<(DispatchPhase, EventFn<KeyUpEvent>)>,
     pub hover: Vec<BoolFn>,
@@ -74,6 +75,7 @@ impl Handlers {
             || !self.mouse_up.is_empty()
             || !self.mouse_move.is_empty()
             || !self.scroll.is_empty()
+            || !self.pen.is_empty()
             || !self.hover.is_empty()
             || self.has_drag()
     }
@@ -479,6 +481,24 @@ pub trait Interactive: Sized {
             .handlers
             .scroll
             .push((DispatchPhase::Bubble, Rc::new(f)));
+        self
+    }
+
+    /// Handles pressure-sensitive pointer input bubbling from the target.
+    fn on_pen(mut self, f: impl Fn(&PenEvent, &mut EventCx) + 'static) -> Self {
+        self.base_mut()
+            .handlers
+            .pen
+            .push((DispatchPhase::Bubble, Rc::new(f)));
+        self
+    }
+
+    /// Handles pressure-sensitive pointer input during capture.
+    fn capture_pen(mut self, f: impl Fn(&PenEvent, &mut EventCx) + 'static) -> Self {
+        self.base_mut()
+            .handlers
+            .pen
+            .push((DispatchPhase::Capture, Rc::new(f)));
         self
     }
 

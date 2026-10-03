@@ -2220,6 +2220,15 @@ impl ElementTree {
                     }
                 }
             }
+            InputEvent::Pen(e) => {
+                let path = self
+                    .hit_test(e.position)
+                    .map(|target| self.path_to(target))
+                    .unwrap_or_else(|| vec![self.root]);
+                let (stopped, _) =
+                    self.dispatch_phases(&path, e, Some(event), |h| h.pen.clone(), env);
+                result.handled = stopped;
+            }
             InputEvent::KeyDown(e) => {
                 if !e.keystroke.modifiers.is_command_like()
                     || matches!(e.keystroke.key, Key::Named(NamedKey::Tab))
